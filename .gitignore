@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+*.db
+evidence/*
+!evidence/.gitkeep
+node_modules/
+dist/
+.env
+*.log
