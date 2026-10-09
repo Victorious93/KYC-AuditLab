@@ -1,6 +1,14 @@
 # Ownership Map (M0)
 
-## Honest status
+## Decision recorded: single-operator process accepted
+
+**2026-10-09 update:** presented with the choice below, the repository
+owner chose option (b). See `docs/phase1/decisions/0001-single-operator-process.md`
+for the full decision record. The role table and "action required" section
+below are kept as-written for the historical record of the M0 finding;
+they are no longer a live blocker as of DR-0001.
+
+## Honest status (as of the original M0 pass)
 
 No human has been assigned to any of the roles the Phase 1 delivery model
 requires (Technical lead, Security lead, QA lead, Platform/data engineer,
@@ -40,7 +48,7 @@ cannot credibly both implement and approve a security control).
 | Layer 1-3, 5-7 owner(s) | Implemented by the AI session; no human owner recorded | **Open** |
 | Layer 4 (Android) owner | Not assigned; no device/emulator available to this session either | **Open**, also blocked on infrastructure (see `DEP-1`) |
 
-## Action required before M1 can be formally exited
+## Action required before M1 can be formally exited (historical - resolved by DR-0001)
 
 Per the delivery model's own M1 handoff criteria, a Security lead must
 approve the safety/execution contract and a QA lead must confirm each
@@ -51,3 +59,8 @@ formally exited, or (b) explicitly accept, in writing in this repo, that a
 single-operator process is being used instead and adjust the delivery
 model's entry/exit criteria accordingly - silently proceeding without
 either choice would make every later "approved by X" claim false.
+
+**Resolution:** the repository owner chose (b) on 2026-10-09. Per
+DR-0001, every "X lead approves" criterion below is now satisfied by
+repository-owner review and explicit approval instead of a separate
+named role. M1 may proceed on this basis.
