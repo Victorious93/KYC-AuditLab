@@ -1,0 +1,41 @@
+{
+  "properties": {
+    "allowed_targets": {
+      "description": "Server-side hostname allowlist. Must never be empty - an empty list would mean 'nothing is allowed', which is the fail-closed default, but an empty list passed here is almost certainly a misconfiguration (no target can ever be tested), so it's rejected instead of silently accepted.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowed Targets",
+      "type": "array"
+    },
+    "enforce_local_only": {
+      "default": true,
+      "description": "Must be true for any deployment of this project. False is accepted by the schema (so a future legitimate non-local use case isn't structurally impossible) but every local default and every example in this repo keeps it true - see field_validator below for the specific strings this blocks regardless.",
+      "title": "Enforce Local Only",
+      "type": "boolean"
+    },
+    "environment": {
+      "description": "Deployment environment name, e.g. 'local', 'ci'. Never 'production' for this project.",
+      "title": "Environment",
+      "type": "string"
+    },
+    "evidence_dir": {
+      "description": "Local filesystem path for evidence artifacts.",
+      "title": "Evidence Dir",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "environment",
+    "allowed_targets",
+    "evidence_dir"
+  ],
+  "title": "ExecutionConfigV1",
+  "type": "object"
+}

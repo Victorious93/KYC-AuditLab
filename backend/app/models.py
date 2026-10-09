@@ -23,12 +23,28 @@ class Severity(str, enum.Enum):
 
 
 class RunStatus(str, enum.Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    PASSED = "passed"
-    FAILED = "failed"
-    ERROR = "error"
-    BLOCKED_SCOPE = "blocked_scope"
+    """Completion-state vocabulary per docs/phase1/DELIVERY_MODEL.md M1
+    Task 7. Two are transient (a run passes through them while executing);
+    the rest are terminal and match the delivery model's required status
+    words exactly (as .value, since "not-run" isn't a valid Python
+    identifier as a member name).
+
+    No status may be set to PASS by anything other than the module's own
+    ModuleResult.passed=True after it actually executed - see runner.py.
+    """
+
+    PENDING = "pending"          # transient: row created, not yet executed
+    RUNNING = "running"          # transient: module.run() in progress
+
+    PASS = "pass"                # executed; ModuleResult.passed is True
+    FAIL = "fail"                # executed; ModuleResult.passed is False
+    BLOCKED = "blocked"          # scope/authorization check failed before execution
+    UNSUPPORTED = "unsupported"  # capability intentionally not built (by design)
+    SKIPPED = "skipped"          # intentionally excluded under a documented rule
+    FLAKY = "flaky"              # inconsistent results across repeated runs
+    UNAVAILABLE = "unavailable"  # required environment/dependency not present (e.g. no Android device)
+    NOT_RUN = "not-run"          # defined for the vocabulary; not currently produced by runner.py (reserved for future cancellation/queueing states)
+    ERROR = "error"              # unhandled exception inside module.run() itself (a defect in the module)
 
 
 class TestRun(Base):

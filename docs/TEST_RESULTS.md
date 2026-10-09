@@ -1,5 +1,19 @@
 # Test Results — Phase 1
 
+**Update (same day, M1 work):** completion-state vocabulary expanded
+(`RunStatus`: pass/fail/blocked/unsupported/skipped/flaky/unavailable/
+not-run/error) and 14 new tests added (`test_schemas.py`,
+`test_runner_failure_injection.py`) for M1's schema and fail-closed
+requirements. **Current total: 35 passed, 0 failed.** The original 21-test
+run below is kept as the historical record of that pass; see
+`docs/phase1/SAFETY_POLICY.md` and `docs/phase1/traceability.csv` for the
+M1-specific detail. Status strings referenced below ("passed", "failed",
+"blocked_scope", "error") are from that original run and predate the
+vocabulary change - current code uses "pass", "fail", "blocked",
+"unavailable", "unsupported", etc. (see `backend/app/models.py:RunStatus`).
+
+## Original run (21 tests, API/workflow/document/biometric/liveness/fraud layers)
+
 Run in this environment on 2026-10-09, via:
 
 ```
@@ -74,6 +88,24 @@ passes: **6 passed, 0 failed.**
    decision. Fixed by giving the session a passing face score so liveness
    is the only variable, which correctly exposes the critical finding in
    vulnerable mode and correctly passes in hardened mode.
+
+## M1 run (35 tests total, includes the 21 above plus 14 new)
+
+```
+cd backend
+python -m pytest tests/ -q
+```
+
+```
+35 passed, 323 warnings in 1.26s
+```
+
+New in this pass: `tests/test_schemas.py` (13 tests - `ExecutionConfigV1`,
+`FixtureMetadataV1`, `EvidenceManifestV1` positive/negative validation,
+plus the fixture-registry and JSON-Schema-export-sync checks) and
+`tests/test_runner_failure_injection.py` (1 test - reproduces the
+`RunStatus.ERROR` path with a throwaway, non-registered module that
+deliberately raises, closing risk-register item `TEST-1`).
 
 ## Not run / not executed
 

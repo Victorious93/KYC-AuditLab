@@ -68,6 +68,16 @@ class TestContext:
     params: Dict = field(default_factory=dict)
 
 
+class UnexecutedStatus(str, Enum):
+    """For a module with no run() callable, which of the delivery model's
+    two distinct non-execution states applies. Mirrors models.RunStatus's
+    UNAVAILABLE/UNSUPPORTED members but lives here (not in models.py) since
+    it's a registry-time classification, not a run-time outcome."""
+
+    UNAVAILABLE = "unavailable"    # environment/dependency missing right now (e.g. no device) - could run elsewhere
+    UNSUPPORTED = "unsupported"    # intentionally never built, by design, regardless of environment
+
+
 @dataclass
 class TestModule:
     id: str                      # unique, e.g. "api.auth.missing_token"
@@ -77,6 +87,7 @@ class TestModule:
     capability: Capability
     run: Optional[Callable[[TestContext], ModuleResult]] = None
     limitation: Optional[str] = None  # required if capability != IMPLEMENTED
+    unexecuted_status: UnexecutedStatus = UnexecutedStatus.UNAVAILABLE  # only consulted when run is None
 
     def __post_init__(self) -> None:
         if self.capability == Capability.IMPLEMENTED and self.run is None:

@@ -16,7 +16,7 @@ against a connected device via ADB and the output is attached as evidence.
 """
 from __future__ import annotations
 
-from ...orchestrator.registry import Capability, Layer, TestModule, registry
+from ...orchestrator.registry import Capability, Layer, TestModule, UnexecutedStatus, registry
 
 
 def _unimplemented_adb_check(ctx):  # pragma: no cover - intentionally unreachable
@@ -62,6 +62,11 @@ for module_id, title, description in _ANDROID_MODULES:
             description=description,
             capability=Capability.STUB_NOT_IMPLEMENTED,
             run=None,
+            # This is an environment/infrastructure gap (no device attached
+            # here), not a by-design refusal to build it - see
+            # UnexecutedStatus docstring in orchestrator/registry.py. Runner
+            # reports RunStatus.UNAVAILABLE for these, not UNSUPPORTED.
+            unexecuted_status=UnexecutedStatus.UNAVAILABLE,
             limitation=(
                 "Not executed: this development environment has no attached Android device, "
                 "emulator, or ADB connection. The interface and Kotlin-side instrumentation "

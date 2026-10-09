@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..models import Finding as FindingModel
 from ..models import RunStatus, TestRun
-from .registry import Capability, TestContext, registry
+from .registry import TestContext, UnexecutedStatus, registry
 from .scope import ScopeViolation, assert_in_scope
 
 settings = get_settings()
@@ -29,10 +29,15 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
     # it's just annotated that its offensive counterpart was not built or
     # that it needs real data the operator must supply.
     if module.run is None:
-        run.status = RunStatus.ERROR
+        run.status = (
+            RunStatus.UNSUPPORTED
+            if module.unexecuted_status == UnexecutedStatus.UNSUPPORTED
+            else RunStatus.UNAVAILABLE
+        )
         run.summary = (
             f"Module '{module.id}' has no implementation to execute "
-            f"(capability={module.capability.value}). Limitation: {module.limitation}"
+            f"(capability={module.capability.value}, unexecuted_status={module.unexecuted_status.value}). "
+            f"Limitation: {module.limitation}"
         )
         run.finished_at = dt.datetime.utcnow()
         db.commit()
@@ -41,7 +46,7 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
     try:
         assert_in_scope(db, target)
     except ScopeViolation as exc:
-        run.status = RunStatus.BLOCKED_SCOPE
+        run.status = RunStatus.BLOCKED
         run.summary = str(exc)
         run.finished_at = dt.datetime.utcnow()
         db.commit()
@@ -52,7 +57,7 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
 
     try:
         result = module.run(ctx)  # type: ignore[misc]
-        run.status = RunStatus.PASSED if result.passed else RunStatus.FAILED
+        run.status = RunStatus.PASS if result.passed else RunStatus.FAIL
         run.summary = result.summary
         run.raw_output = result.raw_output
         for f in result.findings:

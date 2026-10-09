@@ -8,7 +8,7 @@ def test_unscoped_target_is_blocked(live_server):
 
     requests.delete(f"http://{live_server}/scope/127.0.0.1", timeout=5)
     r = run_module(live_server, "api.auth.missing_token_rejected")
-    assert r.status == "blocked_scope", r.summary
+    assert r.status == "blocked", r.summary
     assert "ScopeEntry" in r.summary
 
     requests.post(
@@ -29,5 +29,5 @@ def test_non_allowlisted_host_is_blocked(live_server):
         timeout=5,
     )
     r = run_module("evil.example.com:8000", "api.auth.missing_token_rejected")
-    assert r.status == "blocked_scope", r.summary
+    assert r.status == "blocked", r.summary
     assert "allowlist" in r.summary
