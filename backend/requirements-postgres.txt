@@ -1,0 +1,6 @@
+# Optional: only needed when running against the real Postgres deployment
+# (docker-compose.yml). The Docker image has libpq build dependencies
+# available; this is split out because psycopg2-binary has no prebuilt
+# wheel for every local dev platform and SQLite (requirements.txt) is
+# sufficient for development and the automated test suite.
+psycopg2-binary==2.9.9

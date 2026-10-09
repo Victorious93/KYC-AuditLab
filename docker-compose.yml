@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: identityshield
+      POSTGRES_PASSWORD: identityshield
+      POSTGRES_DB: identityshield
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identityshield"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    # Serves both the orchestrator API and the local KYC simulator
+    # (mounted at /simulator) in one process - there is intentionally no
+    # second "target" container, since the simulator IS the only
+    # authorized target for this deployment.
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://identityshield:identityshield@db:5432/identityshield
+      IDENTITYSHIELD_ALLOWED_TARGETS: backend,localhost,127.0.0.1
+      IDENTITYSHIELD_LOCAL_ONLY: "true"
+      IDENTITYSHIELD_EVIDENCE_DIR: /evidence
+    volumes:
+      - evidence:/evidence
+    ports:
+      - "8000:8000"
+
+  dashboard:
+    build: ./dashboard
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:
+  evidence:
