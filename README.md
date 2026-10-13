@@ -1,19 +1,16 @@
 # IdentityShield
 
-A local-first security research framework for evaluating a KYC/identity-
-verification system's resistance to seven classes of weakness: document
-validation, facial biometrics, liveness detection, Android client security,
-API/network security, verification-workflow/session security, and fraud
-monitoring.
+A **local-first** security research framework for evaluating a KYC / identity-verification system’s resistance across seven layers: document validation, facial biometrics, liveness, Android client security, API/network, verification workflow/session, and fraud monitoring.
 
-**Out of the box, this targets only its own bundled simulator.** No
-third-party production identity-verification system is in scope by
-default; see [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for why, and
-[`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) for what is and isn't
-implemented (read this before trusting any claim about what the framework
-"found").
+[![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688)](https://fastapi.tiangolo.com/)
+![Status: Phase 1](https://img.shields.io/badge/status-Phase%201-orange)
 
-## Quickstart (no Docker needed)
+> **Repo slug:** GitHub repository name is `KYC-AuditLab`; the product name in-tree is **IdentityShield**.
+
+**Out of the box, this targets only its own bundled simulator.** No third-party production identity-verification system is in scope by default. Read [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) before trusting any claim about what the framework “found”.
+
+## Quick start (no Docker)
 
 ```bash
 cd backend
@@ -22,16 +19,13 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-In another terminal, authorize the simulator as a test target (default-deny
-is enforced - nothing runs without this):
+Authorize the simulator as a test target (**default-deny** — nothing runs without this):
 
 ```bash
 curl -X POST localhost:8000/scope \
   -H 'Content-Type: application/json' \
   -d '{"target": "localhost", "authorized_by": "you"}'
 ```
-
-List and run test modules:
 
 ```bash
 curl localhost:8000/tests/modules
@@ -41,7 +35,7 @@ curl -X POST localhost:8000/tests/run \
 curl localhost:8000/results/runs
 ```
 
-## Run the automated test suite
+## Tests
 
 ```bash
 cd backend
@@ -49,9 +43,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-21/21 pass as of this writing - see [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md)
-for the real, current run output and the bugs that were found and fixed
-while getting there.
+Documented as **21/21 pass** in [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) (against a live local instance).
 
 ## Dashboard
 
@@ -61,41 +53,45 @@ npm install
 npm run dev
 ```
 
-Builds and type-checks cleanly (`npm run build`); set `VITE_API_BASE_URL`
-if the backend isn't on `localhost:8000`.
+Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`.
 
-## Docker Compose (Postgres-backed)
+## Docker Compose (Postgres)
 
 ```bash
 docker compose up --build
 ```
 
-Written and reviewed, **not run end-to-end** in this development
-environment (no Docker daemon available here) - see `docs/LIMITATIONS.md`.
+Written and reviewed; **not run end-to-end** in the environment that wrote these docs (no Docker daemon). See `docs/LIMITATIONS.md`.
 
-## Repository layout
+## Screenshots
 
-```
-backend/            FastAPI orchestrator + the KYC simulator it targets
-  app/orchestrator/    registry, runner, scope/authorization enforcement
-  app/simulator/       the local, resettable KYC test target
-  app/layers/          one package per attack layer (layer1..layer7)
-  tests/               pytest suite, runs against a live local instance
-android-companion/   Kotlin source for on-device checks (not built/run - see LIMITATIONS.md)
+| Dashboard | Module list | Run results | Scope authorization |
+|---|---|---|---|
+| *TODO* | *TODO* | *TODO* | *TODO* |
+
+## Safety model (brief)
+
+- `IDENTITYSHIELD_ALLOWED_TARGETS` (server env, not settable via API) caps hostnames.
+- Every module run needs an explicit, non-revoked `ScopeEntry` (`POST /scope`) — default-deny.
+- Unimplemented modules (e.g. Layer 4 Android execution) report explicit errors; they never silently no-op as success.
+
+Does **not** implement counterfeit-document generators, biometric spoofing media, presentation-attack media, or root/Play-Integrity bypass tooling (by design). See LIMITATIONS.md.
+
+## Project structure
+
+```text
+backend/             FastAPI orchestrator + KYC simulator + layer packages + pytest
+android-companion/   Kotlin source for on-device checks (not built/run yet)
 dashboard/           React + TypeScript SPA
 docs/                Architecture, threat model, limitations, roadmap, test results
-evidence/            Raw test output (gitignored contents)
+evidence/            Raw output dir (contents gitignored)
+docker-compose.yml   Postgres + backend + dashboard
 ```
 
-## Safety model, briefly
+## Contributing
 
-- `IDENTITYSHIELD_ALLOWED_TARGETS` (server-side env, not settable via API)
-  is a hard ceiling on what hostnames can ever be tested from a given
-  deployment.
-- Every module run additionally requires an explicit, non-revoked
-  `ScopeEntry` row (`POST /scope`) - default-deny, not default-allow.
-- A module that isn't really implemented (see Layer 4) always reports an
-  explicit error naming the limitation; it never silently no-ops as if it
-  had run.
+Update `docs/LIMITATIONS.md` in the same change as any capability claim. Keep scope/authorization fail-closed. Do not add generators for counterfeit identity documents or biometric attack media.
 
-Full detail in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+## License
+
+**No `LICENSE` file is present.** Add an SPDX license before treating the project as redistributable open source.
