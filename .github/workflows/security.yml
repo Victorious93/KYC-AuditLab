@@ -61,3 +61,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Account artifact storage quota is exhausted; report goes to the log instead.
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  android-build:
+    # Layer 4 companion: compile only (no device). No artifact upload (storage quota).
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-companion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: ./gradlew --no-daemon assembleDebug
