@@ -36,10 +36,8 @@ jobs:
       - run: pip-audit -r backend/requirements.txt -r backend/requirements-postgres.txt
 
   npm-audit:
-    # Non-blocking: front-end advisories are often noisy/dev-only. Results
-    # are visible in the job log; promote to blocking once the baseline is clean.
+    # Blocking: fails CI on any high/critical advisory.
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: dashboard
