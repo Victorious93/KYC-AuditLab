@@ -58,6 +58,9 @@ class ModuleResult:
     summary: str
     findings: List[Finding] = field(default_factory=list)
     raw_output: Optional[str] = None
+    # True when a prerequisite (adb, device, APK, expected value) was missing and
+    # nothing was tested. The runner records SKIPPED - never PASSED.
+    skipped: bool = False
 
 
 @dataclass

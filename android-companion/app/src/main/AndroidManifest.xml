@@ -5,4 +5,9 @@
     <application
         android:label="IdentityShield Companion"
         android:allowBackup="false" />
+    <!-- Entry point for the backend adb harness (am instrument -w). -->
+    <instrumentation
+        android:name=".IntegrityInstrumentation"
+        android:targetPackage="com.identityshield.companion"
+        android:label="IdentityShield integrity checks" />
 </manifest>

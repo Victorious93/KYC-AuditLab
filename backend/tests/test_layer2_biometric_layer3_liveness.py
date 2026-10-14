@@ -19,6 +19,8 @@ def test_liveness_pad_evaluation_runs_on_synthetic_data(live_server):
 
 
 def test_android_modules_are_honest_stubs(live_server):
-    r = run_module(live_server, "android.integrity.apk_signature_check")
+    # Signature/permission/trust are now wired to the adb harness (see
+    # test_layer4_android.py); storage + network config remain honest stubs.
+    r = run_module(live_server, "android.storage.local_data_at_rest")
     assert r.status == "error"
-    assert "no attached Android device" in r.summary
+    assert "no instrumentation" in r.summary

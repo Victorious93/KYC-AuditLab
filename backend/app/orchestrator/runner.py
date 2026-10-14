@@ -53,7 +53,10 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
 
     try:
         result = module.run(ctx)  # type: ignore[misc]
-        run.status = RunStatus.PASSED if result.passed else RunStatus.FAILED
+        if result.skipped:
+            run.status = RunStatus.SKIPPED
+        else:
+            run.status = RunStatus.PASSED if result.passed else RunStatus.FAILED
         run.summary = redact(result.summary)
         run.raw_output = redact(result.raw_output)
         for f in result.findings:
