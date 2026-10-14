@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo-512.png" alt="IdentityShield logo" width="200">
+</p>
+
 # IdentityShield
 
 A **local-first** security research framework for evaluating a KYC / identity-verification system’s resistance across seven layers: document validation, facial biometrics, liveness, Android client security, API/network, verification workflow/session, and fraud monitoring.
