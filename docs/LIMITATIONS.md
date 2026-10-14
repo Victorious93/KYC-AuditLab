@@ -5,14 +5,15 @@ project right now. Update it in the same commit as any capability change.
 
 ## Not implemented at all
 
-- **Layer 4 (Android)** - all 5 registered modules are
-  `STUB_NOT_IMPLEMENTED`. No Android device, emulator, or ADB connection
-  exists in this development environment, so nothing was executed. The
-  Kotlin companion (`android-companion/`) has real source for signature
-  digest / permission audit / device-trust-signal checks, but it has
-  **not been built or run**. Wiring it to the orchestrator requires
-  shelling out to `adb` from `runner.py`, following the same
-  `assert_in_scope()` gating pattern used for network modules.
+- **Layer 4 (Android)** - signature, permission-audit and device-trust
+  modules are wired to an adb harness (`layer4_android/harness.py`) that
+  installs the companion APK and runs `IntegrityInstrumentation` via
+  `am instrument`. When adb, an authorized device, or the built APK is
+  missing they record **SKIPPED** ("skipped: no device ..."), never PASSED.
+  The harness is unit-tested against a mocked adb only; it has **not yet
+  been run on a real device/emulator**. Local-storage and network-config
+  modules remain `STUB_NOT_IMPLEMENTED`. Existing Postgres databases need
+  `ALTER TYPE runstatus ADD VALUE 'skipped';` (fresh DBs via create_all are fine).
 
 ## Intentionally not implemented (by design, not by oversight)
 

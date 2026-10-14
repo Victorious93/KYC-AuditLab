@@ -29,6 +29,7 @@ class RunStatus(str, enum.Enum):
     FAILED = "failed"
     ERROR = "error"
     BLOCKED_SCOPE = "blocked_scope"
+    SKIPPED = "skipped"  # prerequisite (e.g. adb/device) absent; NOT a pass
 
 
 class TestRun(Base):
