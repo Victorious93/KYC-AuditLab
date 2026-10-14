@@ -1,8 +1,9 @@
 # IdentityShield Android Companion
 
-**Status: source only, not built or run.** This development environment has
-no Android SDK, emulator, or physical device attached, so nothing in this
-module has been compiled or executed. Do not treat any Android-layer claim
+**Status: builds (`assembleDebug`), not yet run on a device.** The module is a
+real Gradle project (AGP 9.3.1, Gradle 9.5.0 wrapper, compileSdk/targetSdk 36,
+minSdk 28) and CI compiles it on every push/PR. No emulator or physical device
+has executed it, so no on-device check has produced a result yet. Do not treat any Android-layer claim
 in reports produced by this project as a verified result unless it names a
 real device/emulator (`adb devices` output) and attaches command output as
 evidence.
@@ -29,9 +30,11 @@ something this general framework ships by default.
 
 ## To actually build and run this
 
-1. Open `android-companion/` in Android Studio, or set up a Gradle wrapper
-   + `build.gradle.kts` (not yet created - this is source scaffolding, not
-   a complete buildable module yet).
+1. Build: `cd android-companion && ANDROID_HOME=/path/to/sdk ./gradlew assembleDebug`
+   (JDK 17+, SDK platform 36). Output: `app/build/outputs/apk/debug/app-debug.apk`.
+   Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+   The APK has no launcher activity yet; checks are exposed as a library class
+   (`IntegrityChecks`) for an instrumentation/UI Automator harness (step 3).
 2. Attach a device or start an emulator; `adb devices` must show it.
 3. Wire the backend's `layer4_android` registry modules to shell out to
    `adb shell am instrument ...` or a UI Automator test APK that exercises

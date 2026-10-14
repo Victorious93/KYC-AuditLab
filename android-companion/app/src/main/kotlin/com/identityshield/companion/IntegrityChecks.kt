@@ -45,8 +45,8 @@ class IntegrityChecks(private val context: Context) {
         val info = pm.getPackageInfo(targetPackage, PackageManager.GET_PERMISSIONS)
         val requested = info.requestedPermissions ?: return emptyList()
         return requested.mapIndexed { idx, perm ->
-            val granted = (info.requestedPermissionsFlags?.getOrNull(idx)
-                ?.and(PackageManager.REQUESTED_PERMISSION_GRANTED)) != 0
+            val flags = info.requestedPermissionsFlags?.getOrNull(idx) ?: 0
+            val granted = (flags and android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
             val isDangerous = try {
                 val permInfo = pm.getPermissionInfo(perm, 0)
                 (permInfo.protection and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE) ==
