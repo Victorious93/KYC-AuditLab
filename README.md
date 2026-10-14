@@ -19,20 +19,47 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+### API authentication (required)
+
+The control-plane API is protected by API keys sent in the `X-API-Key` header. Two roles, **not hierarchical**:
+
+| Role | Routes |
+|---|---|
+| `admin` | `/scope` (add / list / revoke), `/simulator/admin/*` |
+| `operator` | `/tests/*` (list modules, run), `/results/*` |
+
+The deliberately vulnerable simulator KYC flow (`/simulator/session`, `/document`, `/face`, `/liveness`, `/decision`, `/audit/*`) and `/health` stay unauthenticated — they are lab targets.
+
+- Missing/wrong key → **401**; valid key without the required role → **403**.
+- **Fail closed:** if no valid keys are configured, every protected route returns **503**.
+- Keys are configured only via env, stored as SHA-256 hashes, compared in constant time (`hmac.compare_digest`):
+
+```bash
+# entries: identity:roles:sha256hex   (roles: admin, operator, or admin+operator)
+python -m app.auth hash "$(openssl rand -hex 32)"   # prints the hash of a key you generate
+export IDENTITYSHIELD_API_KEYS="alice:admin:<hash>,ci-bot:operator:<hash>"
+```
+
+- `authorized_by` on scope entries is set from the authenticated key's identity (`alice` above). Any client-supplied `authorized_by` is ignored.
+- **Local dev option:** `IDENTITYSHIELD_DEV_API_KEYS` takes the same format with a *plaintext* key (e.g. `dev:admin+operator:devkey`). It is honoured **only** when `IDENTITYSHIELD_ENV=local` (the default) and ignored otherwise. Never use it in a shared deployment.
+
+See [`.env.example`](.env.example).
+
 Authorize the simulator as a test target (**default-deny** — nothing runs without this):
 
 ```bash
+export IDENTITYSHIELD_DEV_API_KEYS="dev:admin+operator:devkey"   # before starting uvicorn
 curl -X POST localhost:8000/scope \
-  -H 'Content-Type: application/json' \
-  -d '{"target": "localhost", "authorized_by": "you"}'
+  -H 'X-API-Key: devkey' -H 'Content-Type: application/json' \
+  -d '{"target": "localhost"}'
 ```
 
 ```bash
-curl localhost:8000/tests/modules
+curl -H 'X-API-Key: devkey' localhost:8000/tests/modules
 curl -X POST localhost:8000/tests/run \
-  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: devkey' -H 'Content-Type: application/json' \
   -d '{"module_id": "workflow.liveness.client_assertion_ignored", "target": "localhost:8000"}'
-curl localhost:8000/results/runs
+curl -H 'X-API-Key: devkey' localhost:8000/results/runs
 ```
 
 ## Tests
@@ -43,7 +70,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-Documented as **21/21 pass** in [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) (against a live local instance).
+Documented as **21/21 pass** in [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) (against a live local instance). With API auth (`tests/test_api_auth.py`) the suite is **64 tests**; the test suite configures its own throwaway hashed keys.
 
 ## Dashboard
 
@@ -53,7 +80,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`.
+Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`, and `VITE_API_KEY` to a key with the roles you need (the dashboard uses both `admin` and `operator` routes). This embeds the key in the browser bundle — local use only.
 
 ## Docker Compose (Postgres)
 
@@ -72,6 +99,7 @@ Written and reviewed; **not run end-to-end** in the environment that wrote these
 ## Safety model (brief)
 
 - `IDENTITYSHIELD_ALLOWED_TARGETS` (server env, not settable via API) caps hostnames.
+- Control-plane routes require an API key with the right role (`admin` / `operator`); no keys configured → fail closed.
 - Every module run needs an explicit, non-revoked `ScopeEntry` (`POST /scope`) — default-deny.
 - Unimplemented modules (e.g. Layer 4 Android execution) report explicit errors; they never silently no-op as success.
 

@@ -33,25 +33,30 @@ export interface RunDetail extends RunSummary {
   }[];
 }
 
+// Local use only: Vite inlines this into the browser bundle.
+const API_KEY: string | undefined = (import.meta as any).env?.VITE_API_KEY;
+const authHeaders = (extra: Record<string, string> = {}): Record<string, string> =>
+  API_KEY ? { ...extra, "X-API-Key": API_KEY } : extra;
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
   return res.json();
 }
 
 export const api = {
-  listModules: () => fetch(`${API_BASE}/tests/modules`).then((r) => json<TestModuleInfo[]>(r)),
-  listRuns: () => fetch(`${API_BASE}/results/runs`).then((r) => json<RunSummary[]>(r)),
-  getRun: (id: string) => fetch(`${API_BASE}/results/runs/${id}`).then((r) => json<RunDetail>(r)),
+  listModules: () => fetch(`${API_BASE}/tests/modules`, { headers: authHeaders() }).then((r) => json<TestModuleInfo[]>(r)),
+  listRuns: () => fetch(`${API_BASE}/results/runs`, { headers: authHeaders() }).then((r) => json<RunSummary[]>(r)),
+  getRun: (id: string) => fetch(`${API_BASE}/results/runs/${id}`, { headers: authHeaders() }).then((r) => json<RunDetail>(r)),
   runModule: (module_id: string, target: string) =>
     fetch(`${API_BASE}/tests/run`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ module_id, target }),
     }).then((r) => json<{ run_id: string; status: string; summary: string; finding_count: number }>(r)),
   authorizeScope: (target: string, authorized_by: string) =>
     fetch(`${API_BASE}/scope`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ target, authorized_by }),
     }).then((r) => json<{ status: string; target: string }>(r)),
 };

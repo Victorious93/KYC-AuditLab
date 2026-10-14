@@ -4,20 +4,29 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..auth import Principal, require_admin
 from ..db import get_db
 from ..models import ScopeEntry
 
-router = APIRouter(prefix="/scope", tags=["scope"])
+router = APIRouter(prefix="/scope", tags=["scope"], dependencies=[Depends(require_admin)])
 
 
 class ScopeCreateRequest(BaseModel):
     target: str
-    authorized_by: str
+    # Deprecated and IGNORED: authorized_by is always taken from the
+    # authenticated API key's identity. Accepted only so older clients that
+    # still send it don't get a 422.
+    authorized_by: str | None = None
     note: str | None = None
 
 
 @router.post("")
-def add_scope_entry(req: ScopeCreateRequest, db: Session = Depends(get_db)):
+def add_scope_entry(
+    req: ScopeCreateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_admin),
+):
+    authorized_by = principal.identity  # never trust req.authorized_by
     # True upsert by the unique `target` column. db.merge() matches on
     # primary key only, and ScopeEntry's PK is a freshly-generated uuid on
     # every construction - so merge() would INSERT a duplicate row and
@@ -25,14 +34,14 @@ def add_scope_entry(req: ScopeCreateRequest, db: Session = Depends(get_db)):
     # row up by target first instead.
     entry = db.query(ScopeEntry).filter(ScopeEntry.target == req.target).first()
     if entry is None:
-        entry = ScopeEntry(target=req.target, authorized_by=req.authorized_by, note=req.note, revoked="false")
+        entry = ScopeEntry(target=req.target, authorized_by=authorized_by, note=req.note, revoked="false")
         db.add(entry)
     else:
-        entry.authorized_by = req.authorized_by
+        entry.authorized_by = authorized_by
         entry.note = req.note
         entry.revoked = "false"
     db.commit()
-    return {"status": "authorized", "target": req.target}
+    return {"status": "authorized", "target": req.target, "authorized_by": authorized_by}
 
 
 @router.get("")

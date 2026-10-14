@@ -10,6 +10,21 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test_identityshield.db")
 os.environ.setdefault("IDENTITYSHIELD_ALLOWED_TARGETS", "127.0.0.1,localhost")
 os.environ.setdefault("IDENTITYSHIELD_SIM_VULNERABLE", "true")
 
+# Test-only API keys, configured the production way (sha256-hashed).
+import hashlib  # noqa: E402
+
+from tests.helpers import ADMIN_KEY, BOTH_KEY, OPERATOR_KEY  # noqa: E402
+
+os.environ["IDENTITYSHIELD_API_KEYS"] = ",".join(
+    f"{ident}:{roles}:{hashlib.sha256(key.encode()).hexdigest()}"
+    for ident, roles, key in [
+        ("test-admin", "admin", ADMIN_KEY),
+        ("test-operator", "operator", OPERATOR_KEY),
+        ("test-both", "admin+operator", BOTH_KEY),
+    ]
+)
+os.environ.pop("IDENTITYSHIELD_DEV_API_KEYS", None)
+
 from app.main import app  # noqa: E402
 
 
@@ -47,10 +62,13 @@ def live_server():
 def _reset_simulator(live_server):
     import requests
 
-    requests.post(f"http://{live_server}/simulator/admin/reset", timeout=5)
+    from tests.helpers import ADMIN_HEADERS
+
+    requests.post(f"http://{live_server}/simulator/admin/reset", headers=ADMIN_HEADERS, timeout=5)
     requests.post(
         f"http://{live_server}/scope",
-        json={"target": "127.0.0.1", "authorized_by": "test-suite", "note": "automated tests"},
+        json={"target": "127.0.0.1", "note": "automated tests"},
+        headers=ADMIN_HEADERS,
         timeout=5,
     )
     yield

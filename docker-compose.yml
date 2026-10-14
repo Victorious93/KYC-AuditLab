@@ -31,6 +31,8 @@ services:
       IDENTITYSHIELD_ALLOWED_TARGETS: backend,localhost,127.0.0.1
       IDENTITYSHIELD_LOCAL_ONLY: "true"
       IDENTITYSHIELD_EVIDENCE_DIR: /evidence
+      # Required: API keys (identity:roles:sha256hex). Unset => protected routes fail closed (503).
+      IDENTITYSHIELD_API_KEYS: ${IDENTITYSHIELD_API_KEYS:-}
     volumes:
       - evidence:/evidence
     ports:
@@ -42,6 +44,7 @@ services:
       - backend
     environment:
       VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_KEY: ${VITE_API_KEY:-}
     ports:
       - "5173:5173"
 

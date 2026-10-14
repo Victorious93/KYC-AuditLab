@@ -1,4 +1,4 @@
-from .helpers import run_module
+from .helpers import ADMIN_HEADERS, run_module
 
 
 def test_unscoped_target_is_blocked(live_server):
@@ -6,14 +6,15 @@ def test_unscoped_target_is_blocked(live_server):
     ScopeEntry authorizing it must still be refused."""
     import requests
 
-    requests.delete(f"http://{live_server}/scope/127.0.0.1", timeout=5)
+    requests.delete(f"http://{live_server}/scope/127.0.0.1", headers=ADMIN_HEADERS, timeout=5)
     r = run_module(live_server, "api.auth.missing_token_rejected")
     assert r.status == "blocked_scope", r.summary
     assert "ScopeEntry" in r.summary
 
     requests.post(
         f"http://{live_server}/scope",
-        json={"target": "127.0.0.1", "authorized_by": "test-suite", "note": "restore for later tests"},
+        json={"target": "127.0.0.1", "note": "restore for later tests"},
+        headers=ADMIN_HEADERS,
         timeout=5,
     )
 
@@ -25,7 +26,8 @@ def test_non_allowlisted_host_is_blocked(live_server):
 
     requests.post(
         f"http://{live_server}/scope",
-        json={"target": "evil.example.com", "authorized_by": "test-suite"},
+        json={"target": "evil.example.com", },
+        headers=ADMIN_HEADERS,
         timeout=5,
     )
     r = run_module("evil.example.com:8000", "api.auth.missing_token_rejected")

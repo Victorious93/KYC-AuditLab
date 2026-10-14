@@ -6,6 +6,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List
 
+# Test-only API keys (never used outside the test suite). conftest.py
+# registers their sha256 hashes in IDENTITYSHIELD_API_KEYS.
+ADMIN_KEY = "test-admin-key-not-a-secret"
+OPERATOR_KEY = "test-operator-key-not-a-secret"
+BOTH_KEY = "test-both-key-not-a-secret"
+ADMIN_HEADERS = {"X-API-Key": ADMIN_KEY}
+OPERATOR_HEADERS = {"X-API-Key": OPERATOR_KEY}
+
 from app.db import SessionLocal
 from app.orchestrator.runner import execute_module
 
