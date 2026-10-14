@@ -7,6 +7,7 @@ import traceback
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..evidence.redact import redact
 from ..models import Finding as FindingModel
 from ..models import RunStatus, TestRun
 from .registry import Capability, TestContext, registry
@@ -53,14 +54,14 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
     try:
         result = module.run(ctx)  # type: ignore[misc]
         run.status = RunStatus.PASSED if result.passed else RunStatus.FAILED
-        run.summary = result.summary
-        run.raw_output = result.raw_output
+        run.summary = redact(result.summary)
+        run.raw_output = redact(result.raw_output)
         for f in result.findings:
             db.add(
                 FindingModel(
                     run_id=run.id,
                     title=f.title,
-                    description=f.description,
+                    description=redact(f.description),
                     severity=f.severity,
                     cwe=f.cwe,
                     remediation=f.remediation,
@@ -70,7 +71,7 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
     except Exception:  # noqa: BLE001 - we want every module error captured, not crash the API
         run.status = RunStatus.ERROR
         run.summary = "Module raised an unhandled exception."
-        run.raw_output = traceback.format_exc()
+        run.raw_output = redact(traceback.format_exc())
 
     run.finished_at = dt.datetime.utcnow()
     db.commit()
