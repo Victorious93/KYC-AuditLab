@@ -85,8 +85,11 @@ Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`, and `VITE_API
 ## Docker Compose (Postgres)
 
 ```bash
+cp .env.example .env   # then set a strong POSTGRES_PASSWORD (and API keys)
 docker compose up --build
 ```
+
+Database credentials are read from `.env` (git-ignored) — nothing is hard-coded in `docker-compose.yml`, and compose fails fast if `POSTGRES_USER`/`POSTGRES_PASSWORD` are unset. Postgres is **not** published on the host; only the backend reaches it over the internal compose network. To inspect the DB locally, uncomment the `127.0.0.1:5432:5432` mapping in `docker-compose.yml` (loopback only). Note: if the password contains URL-special characters (`@ : / %`), URL-encode it, since it is interpolated into `DATABASE_URL`.
 
 Written and reviewed; **not run end-to-end** in the environment that wrote these docs (no Docker daemon). See `docs/LIMITATIONS.md`.
 
