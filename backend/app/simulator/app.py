@@ -21,9 +21,10 @@ import time
 from collections import deque
 from typing import Dict, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from ..auth import require_admin
 from .policies import DEFAULT_POLICY
 from .store import store
 
@@ -209,7 +210,9 @@ def get_audit_trail(session_id: str):
     return {"events": [e for e in store.audit_events if e["session_id"] == session_id]}
 
 
-@router.post("/admin/reset")
+# Admin-only control endpoint. The KYC flow routes above are deliberately
+# left unauthenticated at this layer: they are lab targets.
+@router.post("/admin/reset", dependencies=[Depends(require_admin)])
 def admin_reset():
     store.reset()
     return {"status": "reset"}

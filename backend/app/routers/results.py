@@ -3,10 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..auth import require_operator
 from ..db import get_db
 from ..models import TestRun
 
-router = APIRouter(prefix="/results", tags=["results"])
+router = APIRouter(prefix="/results", tags=["results"], dependencies=[Depends(require_operator)])
 
 
 @router.get("/runs")
