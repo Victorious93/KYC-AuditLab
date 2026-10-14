@@ -59,3 +59,5 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Account artifact storage quota is exhausted; report goes to the log instead.
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
