@@ -42,6 +42,10 @@ class Settings(BaseSettings):
 
     evidence_dir: str = os.getenv("IDENTITYSHIELD_EVIDENCE_DIR", "./evidence")
 
+    # Days to keep test runs/findings/evidence before
+    # `python -m app.evidence.retention` deletes them. See docs/EVIDENCE_POLICY.md.
+    retention_days: int = int(os.getenv("IDENTITYSHIELD_RETENTION_DAYS", "30"))
+
     simulator_base_url: str = os.getenv(
         "IDENTITYSHIELD_SIMULATOR_URL", "http://localhost:8000/simulator"
     )
