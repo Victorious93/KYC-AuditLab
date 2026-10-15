@@ -12,8 +12,10 @@ in scope (default-deny). Optional params: `serial`, `apk_path`,
 
 HONEST STATUS: when `adb`, a device, or the built companion APK is not
 available, these modules return a SKIPPED run ("skipped: no device ...").
-A skip is never a pass. As of this commit the harness has only been
-exercised against a mocked adb in unit tests, not a real device/emulator.
+A skip is never a pass. All five modules have been run end-to-end against
+a real Android 14 (API 34, google_apis x86_64) emulator with KVM, targeting
+com.android.settings and com.google.android.gm; outputs were cross-checked
+with aapt2/apksigner. Not yet run on physical hardware or other API levels.
 
 Local-storage and network-security-config modules use the companion's
 `AppExposureChecks` (non-root: PackageManager flags, the target's binary
@@ -191,8 +193,16 @@ def run_local_storage(ctx: TestContext) -> ModuleResult:
     if s.get("usesCleartextTraffic"):
         f.append(Finding("Cleartext traffic enabled", f"{t} has usesCleartextTraffic=true.", "medium", cwe="CWE-319",
                          remediation="Disable cleartext traffic.", risk_score=5.0))
-    for key, label in [("dataDir", "app data directory"), ("filesDir", "files/"), ("sharedPrefsDir", "shared_prefs/"),
-                       ("externalAppDir", "external Android/data directory")]:
+    self_probe = t == harness.COMPANION_PACKAGE
+    if self_probe:
+        # The companion probing its own sandbox can always read/list it, so the
+        # "readable by other apps" probes are meaningless here (found on a real
+        # emulator: dataDir reported listable). Report that instead of a false positive.
+        f.append(Finding("Cross-app readability not assessed",
+                         f"Target {t} is the companion itself; its own data dir is always readable to it, "
+                         "so the other-app readability probes were not evaluated.", "info"))
+    for key, label in ([] if self_probe else [("dataDir", "app data directory"), ("filesDir", "files/"), ("sharedPrefsDir", "shared_prefs/"),
+                       ("externalAppDir", "external Android/data directory")]):
         probe = s.get(key) or {}
         entries = probe.get("readableEntries") or []
         if entries:
