@@ -18,9 +18,13 @@ def test_liveness_pad_evaluation_runs_on_synthetic_data(live_server):
     assert "info" in r.finding_severities
 
 
-def test_android_modules_are_honest_stubs(live_server):
-    # Signature/permission/trust are now wired to the adb harness (see
-    # test_layer4_android.py); storage + network config remain honest stubs.
+def test_android_storage_module_skips_without_device(live_server, monkeypatch):
+    # Storage + network config are now wired to the adb harness (see
+    # test_layer4_storage_network.py); with no adb they must SKIP, never pass.
+    from app.layers.layer4_android import harness
+
+    monkeypatch.delenv("IDENTITYSHIELD_ADB", raising=False)
+    monkeypatch.setattr(harness.shutil, "which", lambda _: None)
     r = run_module(live_server, "android.storage.local_data_at_rest")
-    assert r.status == "error"
-    assert "no instrumentation" in r.summary
+    assert r.status == "skipped"
+    assert r.summary.startswith("skipped: no device")

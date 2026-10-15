@@ -47,11 +47,22 @@ class IntegrityInstrumentation : Instrumentation() {
                 }
             })
             out.put("deviceTrustSignals", JSONObject(checks.deviceTrustSignals() as Map<*, *>))
+            // Each exposure check is isolated: a failure is reported in its own
+            // section ({"error": ...}) instead of discarding the other results.
+            val exposure = AppExposureChecks(context)
+            out.put("localStorage", section { exposure.localStorage(pkg) })
+            out.put("networkConfig", section { exposure.networkConfig(pkg) })
             Activity.RESULT_OK
         } catch (e: Exception) {
             out.put("error", "${e.javaClass.simpleName}: ${e.message}")
             Activity.RESULT_CANCELED
         }
         finish(code, Bundle().apply { putString("identityshield_json", out.toString()) })
+    }
+
+    private fun section(block: () -> JSONObject): JSONObject = try {
+        block()
+    } catch (e: Exception) {
+        JSONObject().put("error", "${e.javaClass.simpleName}: ${e.message}")
     }
 }

@@ -108,7 +108,7 @@ Written and reviewed; **not run end-to-end** in the environment that wrote these
 - `IDENTITYSHIELD_ALLOWED_TARGETS` (server env, not settable via API) caps hostnames.
 - Control-plane routes require an API key with the right role (`admin` / `operator`); no keys configured → fail closed.
 - Every module run needs an explicit, non-revoked `ScopeEntry` (`POST /scope`) — default-deny.
-- Unimplemented modules report explicit errors; Layer 4 Android modules report `skipped` when no adb/device is available. Neither is ever reported as success.
+- Unimplemented modules report explicit errors; Layer 4 Android modules (signature, permissions, device trust, local-storage exposure, network security config) report `skipped` when no adb/device is available. Neither is ever reported as success.
 
 Does **not** implement counterfeit-document generators, biometric spoofing media, presentation-attack media, or root/Play-Integrity bypass tooling (by design). See LIMITATIONS.md.
 
