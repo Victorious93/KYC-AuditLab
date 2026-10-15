@@ -110,6 +110,8 @@ Written and reviewed; **not run end-to-end** in the environment that wrote these
 - Every module run needs an explicit, non-revoked `ScopeEntry` (`POST /scope`) — default-deny.
 - Unimplemented modules report explicit errors; Layer 4 Android modules (signature, permissions, device trust, local-storage exposure, network security config) report `skipped` when no adb/device is available. Neither is ever reported as success.
 
+Layers 2/3 score bundled SYNTHETIC fixtures (match scores, liveness challenge cases) end-to-end against the simulator. See `docs/DATASETS.md` for sources and licenses. Current metrics: L2 FAR 0.03 / FRR 0.20; L3 APCER 0.333 / BPCER 0.0 (vulnerable mode).
+
 Does **not** implement counterfeit-document generators, biometric spoofing media, presentation-attack media, or root/Play-Integrity bypass tooling (by design). See LIMITATIONS.md.
 
 ## Project structure

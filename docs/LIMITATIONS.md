@@ -35,13 +35,20 @@ project right now. Update it in the same commit as any capability change.
   expired dates, wrong type), never anything resembling a forged
   credential.
 - **Biometric impersonation/spoofing generators** (Layer 2) - not built.
-  The FAR/FRR/EER computation engine is real and tested; it runs against a
-  bundled synthetic placeholder score distribution by default, or a real
-  dataset supplied via `params["scores_csv_path"]`.
+  The FAR/FRR/EER engine is real and tested. By default it pushes each
+  score in the SYNTHETIC fixture `layer2_match_scores.csv` through the
+  simulator's full flow (/face -> /decision) and computes FAR/FRR from the
+  simulator's real decisions (FAR=0.0300, FRR=0.2000, offline EER~0.09 at
+  0.73). The scores themselves are synthetic. No real matcher or face data
+  is involved, so these numbers describe the simulator's 0.80 threshold
+  policy, not any real face matcher. See docs/DATASETS.md.
 - **Presentation-attack media generation** (Layer 3) - not built. The
-  APCER/BPCER/ACER evaluation engine is real and tested; it runs against
-  bundled synthetic placeholder metadata (numeric mock confidence values,
-  no imagery) unless a real dataset/detector is supplied.
+  APCER/BPCER/ACER engine is real and tested. By default it replays the
+  SYNTHETIC challenge-response fixture `layer3_pad_cases.csv` against the
+  simulator's /liveness endpoint (vulnerable mode: APCER=0.3333,
+  BPCER=0.0000, ACER=0.1667, because all 20 `client_asserts_live` attacks
+  get through). This evaluates the liveness *protocol*, not an image-based
+  PAD model. No attack media or public PAD dataset is used.
 - **Root/Play-Integrity/certificate-pinning bypass tooling** (Layer 4) -
   not built, even once Layer 4 device execution exists. The
   `deviceTrustSignals()` function in the Kotlin companion reads the *test
