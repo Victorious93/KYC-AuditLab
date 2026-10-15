@@ -195,3 +195,24 @@ def test_runner_blocks_out_of_scope_package():
 
     snap = run_module("com.not.allowlisted", "android.permissions.dangerous_permission_audit")
     assert snap.status == "blocked_scope"
+
+
+def test_self_target_does_not_flag_own_data_dir(use_fake, apk):
+    # Captured from a real API 34 emulator: the companion targeting itself can
+    # always list its own data dir; that must not be reported as cross-app exposure.
+    probe = lambda p, ok: {"path": p, "readable": ok, "listable": ok, "readableEntries": []}  # noqa: E731
+    base = "/data/user/0/" + harness.COMPANION_PACKAGE
+    storage = {
+        "targetSdkVersion": 36, "allowBackup": False, "debuggable": False, "usesCleartextTraffic": False,
+        "requestLegacyExternalStorage": None, "fullBackupContentSet": False, "dataExtractionRulesSet": False,
+        "externalStoragePermissions": [], "dataDir": probe(base, True), "filesDir": probe(base + "/files", False),
+        "sharedPrefsDir": probe(base + "/shared_prefs", False), "externalAppDir": probe("/storage/x", False),
+    }
+    use_fake(FakeAdb(instr=_instr_stdout(_payload(localStorage=storage))))
+    self_ctx = TestContext(target=harness.COMPANION_PACKAGE, db=None, evidence_dir="/tmp", params={"apk_path": apk})
+    r = l4.run_local_storage(self_ctx)
+    assert r.passed
+    assert [f.title for f in r.findings] == ["Cross-app readability not assessed"]
+    # The same probe for any other package is still flagged.
+    r2 = l4.run_local_storage(_ctx(apk))
+    assert any("listable by other apps" in f.title for f in r2.findings)
