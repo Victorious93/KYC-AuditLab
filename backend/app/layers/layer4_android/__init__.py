@@ -1,6 +1,6 @@
 """Layer 4 - Android Device and Application Security.
 
-Three modules are wired to a real adb/instrumentation harness (see
+Five modules are wired to a real adb/instrumentation harness (see
 `harness.py`): they install the companion APK on an attached, authorized
 device, run `IntegrityInstrumentation` (which calls the Kotlin
 `IntegrityChecks`), and parse the JSON it returns into findings.
@@ -15,8 +15,9 @@ available, these modules return a SKIPPED run ("skipped: no device ...").
 A skip is never a pass. As of this commit the harness has only been
 exercised against a mocked adb in unit tests, not a real device/emulator.
 
-Local-storage and network-security-config checks remain documented stubs:
-the companion has no instrumentation for them yet.
+Local-storage and network-security-config modules use the companion's
+`AppExposureChecks` (non-root: PackageManager flags, the target's binary
+manifest and network_security_config resources, readability probes).
 """
 from __future__ import annotations
 
@@ -142,17 +143,145 @@ registry.register(TestModule(
     run=run_trust_signals,
 ))
 
-_STUB_LIMITATION = (
-    "Not executed: the companion APK has no instrumentation for this check yet. "
-    "Requires a debuggable build/backup or manifest extraction via adb."
-)
-for module_id, title, description in [
-    ("android.storage.local_data_at_rest", "Local storage at-rest check",
-     "Pull app-private storage (via a debuggable build or backup) and check for unencrypted PII/credentials."),
-    ("android.network.transport_security_config", "Network security config check",
-     "Parse the app's network_security_config.xml / manifest for cleartext traffic or certificate-pinning gaps."),
-]:
-    registry.register(TestModule(
-        id=module_id, layer=Layer.ANDROID, title=title, description=description,
-        capability=Capability.STUB_NOT_IMPLEMENTED, run=None, limitation=_STUB_LIMITATION,
-    ))
+
+
+def _section(out: harness.HarnessOutcome, key: str) -> dict:
+    """Return a companion JSON section, raising HarnessError if it is missing,
+    not an object, or reports an error (an error is never a pass)."""
+    sec = out.checks.get(key)
+    if not isinstance(sec, dict):
+        raise harness.HarnessError(f"Companion output has no valid {key!r} section (old companion APK?)")
+    if "error" in sec:
+        raise harness.HarnessError(f"Companion {key} check failed: {sec['error']}")
+    return sec
+
+
+def _unknown(fields) -> Finding:
+    return Finding(
+        "Manifest attributes could not be determined",
+        f"Companion could not parse the binary manifest; unknown: {', '.join(fields)}.",
+        "info",
+    )
+
+
+def run_local_storage(ctx: TestContext) -> ModuleResult:
+    out = _execute(ctx)
+    if out.skipped:
+        return _skip(out)
+    s = _section(out, "localStorage")
+    t = ctx.target
+    f: list = []
+    if s.get("debuggable"):
+        f.append(Finding("Application is debuggable", f"{t} has android:debuggable=true; app data is reachable via run-as/JDWP.",
+                         "high", cwe="CWE-489", remediation="Ship release builds with debuggable=false.", risk_score=8.0))
+    if s.get("allowBackup"):
+        ruled = s.get("dataExtractionRulesSet") or s.get("fullBackupContentSet")
+        f.append(Finding("Backup of app data allowed", f"{t} has android:allowBackup=true"
+                         + (" with backup/data-extraction rules set (review their scope)." if ruled else " and no fullBackupContent/dataExtractionRules restricting it."),
+                         "low" if ruled else "medium", cwe="CWE-530",
+                         remediation="Set allowBackup=false or exclude PII/credentials via dataExtractionRules.",
+                         risk_score=3.0 if ruled else 5.0))
+    if s.get("requestLegacyExternalStorage"):
+        f.append(Finding("Legacy external storage requested", f"{t} sets requestLegacyExternalStorage=true (opts out of scoped storage where honored).",
+                         "medium", cwe="CWE-922", remediation="Use scoped storage; keep KYC data in app-private storage.", risk_score=4.0))
+    ext_perms = s.get("externalStoragePermissions") or []
+    if ext_perms:
+        f.append(Finding("External storage permissions requested", f"{t} requests {', '.join(ext_perms)}.",
+                         "low", cwe="CWE-922", remediation="Avoid writing KYC artefacts to shared storage.", risk_score=2.0))
+    if s.get("usesCleartextTraffic"):
+        f.append(Finding("Cleartext traffic enabled", f"{t} has usesCleartextTraffic=true.", "medium", cwe="CWE-319",
+                         remediation="Disable cleartext traffic.", risk_score=5.0))
+    for key, label in [("dataDir", "app data directory"), ("filesDir", "files/"), ("sharedPrefsDir", "shared_prefs/"),
+                       ("externalAppDir", "external Android/data directory")]:
+        probe = s.get(key) or {}
+        entries = probe.get("readableEntries") or []
+        if entries:
+            sev, score = ("medium", 5.0) if key == "externalAppDir" else ("high", 8.0)
+            f.append(Finding(f"Files readable by other apps in {label}",
+                             f"An unrelated app could read {len(entries)} file(s) in {probe.get('path')}: {', '.join(entries[:20])}.",
+                             sev, cwe="CWE-276", remediation="Do not create world-readable files; keep data app-private.", risk_score=score))
+        elif probe.get("listable") and key != "externalAppDir":
+            f.append(Finding(f"{label} is listable by other apps", f"{probe.get('path')} can be listed by an unrelated app.",
+                             "medium", cwe="CWE-276", risk_score=4.0))
+    if s.get("manifestParseError"):
+        f.append(_unknown(["requestLegacyExternalStorage", "dataExtractionRules", "fullBackupContent", "storage permissions"]))
+    actionable = [x for x in f if x.severity != "info"]
+    return ModuleResult(
+        passed=not actionable,
+        summary=f"Local storage exposure on {out.serial}: {len(actionable)} issue(s) (non-root view; app-private file contents not inspected)",
+        findings=f, raw_output=out.raw_output,
+    )
+
+
+def _blocks(nsc: dict):
+    yield "base-config", nsc.get("baseConfig") or {}
+    for d in nsc.get("domainConfigs") or []:
+        names = ",".join(x.get("name", "?") for x in d.get("domains") or []) or "?"
+        yield f"domain-config({names})", d
+
+
+def run_network_config(ctx: TestContext) -> ModuleResult:
+    out = _execute(ctx)
+    if out.skipped:
+        return _skip(out)
+    s = _section(out, "networkConfig")
+    t = ctx.target
+    f: list = []
+    nsc = s.get("networkSecurityConfig") if isinstance(s.get("networkSecurityConfig"), dict) else None
+    target_sdk = s.get("targetSdkVersion") or 0
+    base = (nsc or {}).get("baseConfig") or {}
+    base_ct = base.get("cleartextTrafficPermitted")
+    if base_ct is True or (base_ct is None and s.get("usesCleartextTraffic")):
+        f.append(Finding("Cleartext traffic permitted app-wide", f"{t} permits cleartext HTTP by default (base-config/usesCleartextTraffic).",
+                         "high", cwe="CWE-319", remediation="Set cleartextTrafficPermitted=false.", risk_score=7.0))
+    if nsc:
+        for name, blk in list(_blocks(nsc))[1:]:
+            if blk.get("cleartextTrafficPermitted") is True:
+                f.append(Finding(f"Cleartext permitted for {name}", f"{t} allows cleartext to {name}.", "medium",
+                                 cwe="CWE-319", risk_score=5.0))
+        for name, blk in _blocks(nsc):
+            if "user" in (blk.get("trustAnchors") or []):
+                f.append(Finding(f"User-installed CAs trusted in {name}", f"{t} trusts user CAs in {name}, enabling TLS interception.",
+                                 "high", cwe="CWE-295", remediation="Trust only system CAs (or pinned) in release.", risk_score=7.0))
+        dbg = nsc.get("debugOverrides")
+        if isinstance(dbg, dict):
+            sev = "high" if s.get("debuggable") else "info"
+            f.append(Finding("debug-overrides present", f"{t} declares <debug-overrides> (anchors: {dbg.get('trustAnchors')}); active only in debuggable builds.",
+                             sev, cwe="CWE-295", risk_score=6.0 if sev == "high" else 0.0))
+        pins = sum(blk.get("pins", 0) or 0 for _, blk in _blocks(nsc))
+    else:
+        pins = 0
+    if s.get("networkSecurityConfigPresent") is False and target_sdk and target_sdk < 24:
+        f.append(Finding("User CAs trusted by default (targetSdk < 24)", f"{t} targets SDK {target_sdk} with no network security config.",
+                         "high", cwe="CWE-295", risk_score=7.0))
+    if not pins:
+        f.append(Finding("No certificate pinning in network security config", f"{t} declares no <pin-set> (runtime/OkHttp pinning is not visible to this check).",
+                         "low", cwe="CWE-295", remediation="Consider pinning the KYC API endpoints.", risk_score=2.0))
+    if s.get("manifestParseError"):
+        f.append(_unknown(["networkSecurityConfig"]))
+    if s.get("nscParseError"):
+        raise harness.HarnessError(f"Could not parse network security config: {s['nscParseError']}")
+    actionable = [x for x in f if x.severity not in ("info", "low")]
+    return ModuleResult(
+        passed=not actionable,
+        summary=f"Network security config on {out.serial}: present={s.get('networkSecurityConfigPresent')}, pins={pins}, {len(actionable)} issue(s)",
+        findings=f, raw_output=out.raw_output,
+    )
+
+
+registry.register(TestModule(
+    id="android.storage.local_data_at_rest",
+    layer=Layer.ANDROID,
+    title="Local storage exposure check",
+    description="Non-root inspection of backup/debuggable/legacy-storage/cleartext flags, data-extraction rules and files readable by other apps.",
+    capability=Capability.IMPLEMENTED,
+    run=run_local_storage,
+))
+registry.register(TestModule(
+    id="android.network.transport_security_config",
+    layer=Layer.ANDROID,
+    title="Network security config check",
+    description="Parse the app's network security config and manifest for cleartext, user-CA trust, pinning and debug-overrides.",
+    capability=Capability.IMPLEMENTED,
+    run=run_network_config,
+))

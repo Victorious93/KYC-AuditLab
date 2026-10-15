@@ -42,3 +42,7 @@ something this general framework ships by default.
    `backend/app/orchestrator/runner.py`.
 4. Everything must still pass `orchestrator.scope.assert_in_scope()` before
    touching a device, the same as network-facing modules.
+
+## Exposure checks
+
+`AppExposureChecks.kt` adds `localStorage` and `networkConfig` sections to the instrumentation JSON (non-root: ApplicationInfo flags, the target's binary manifest and network_security_config XML, readability probes). Compiled in CI; not yet run on a device.

@@ -5,14 +5,27 @@ project right now. Update it in the same commit as any capability change.
 
 ## Not implemented at all
 
-- **Layer 4 (Android)** - signature, permission-audit and device-trust
-  modules are wired to an adb harness (`layer4_android/harness.py`) that
+- **Layer 4 (Android)** - signature, permission-audit, device-trust,
+  local-storage and network-security-config modules are wired to an adb harness (`layer4_android/harness.py`) that
   installs the companion APK and runs `IntegrityInstrumentation` via
   `am instrument`. When adb, an authorized device, or the built APK is
   missing they record **SKIPPED** ("skipped: no device ..."), never PASSED.
   The harness is unit-tested against a mocked adb only; it has **not yet
-  been run on a real device/emulator**. Local-storage and network-config
-  modules remain `STUB_NOT_IMPLEMENTED`. Existing Postgres databases need
+  been run on a real device/emulator**, so the companion's binary-manifest
+  and network_security_config parsing (`AppExposureChecks.kt`) is compiled
+  but unverified on hardware.
+  Local-storage limits (non-root): app-private files are NOT pulled or
+  content-scanned; the check only reports flags (allowBackup, debuggable,
+  requestLegacyExternalStorage, usesCleartextTraffic, fullBackupContent /
+  dataExtractionRules presence, external-storage permissions) and whether an
+  unrelated app can list/read the target's data, shared_prefs, files and
+  external Android/data dirs. Backup/extraction rule *contents* are not
+  evaluated, only their presence. Network-config limits: only the declared
+  XML config is parsed; runtime pinning (OkHttp CertificatePinner, custom
+  TrustManagers) and native TLS stacks are invisible, so "no pinning" is a
+  low-severity observation, not proof. If manifest parsing fails the
+  affected fields are reported as an info finding rather than guessed.
+  Existing Postgres databases need
   `ALTER TYPE runstatus ADD VALUE 'skipped';` (fresh DBs via create_all are fine).
 
 ## Intentionally not implemented (by design, not by oversight)
