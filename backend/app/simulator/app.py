@@ -8,7 +8,9 @@ realistic logic, while staying entirely synthetic and local.
 
 VULNERABLE_MODE (default: on, for demo/eval purposes - toggle with
 IDENTITYSHIELD_SIM_VULNERABLE=false) intentionally leaves in ONE class of
-flaw per layer so the framework's own tests have something real to find
+flaw per layer (for liveness: honoring a client-supplied
+`client_asserts_live`; the challenge itself is server-issued, stored and
+single-use in BOTH modes) so the framework's own tests have something real to find
 and the project can demonstrate (not just claim) detection. This mirrors
 how projects like OWASP Juice Shop / DVWA work: a deliberately-flawed local
 target, never a third-party system.
@@ -62,10 +64,18 @@ class FaceSubmission(BaseModel):
     match_score: float  # [0,1] - synthetic matcher output, not a real image pipeline
 
 
+class LivenessChallengeRequest(BaseModel):
+    session_id: str
+
+
 class LivenessSubmission(BaseModel):
     session_id: str
     challenge_response: str
-    expected_challenge: str
+    # DEPRECATED and IGNORED in both modes. The expected challenge is issued
+    # and stored server-side (POST /simulator/liveness/challenge); a value the
+    # client sends here is never compared against. Accepted only so older
+    # clients don't get a 422, and so tests can prove it is ignored.
+    expected_challenge: Optional[str] = None
     # VULNERABLE_MODE flaw lives here: client_asserts_live lets a caller try
     # to self-report liveness. A correctly-hardened target must ignore this
     # field server-side; our "hardened" (non-vulnerable) path does exactly
@@ -154,13 +164,30 @@ def submit_face(payload: FaceSubmission, authorization: Optional[str] = Header(d
     return {"status": "face_submitted", "score": score, "threshold": DEFAULT_POLICY.min_face_match_score}
 
 
+@router.post("/liveness/challenge")
+def issue_liveness_challenge(payload: LivenessChallengeRequest, authorization: Optional[str] = Header(default=None)):
+    """Issue a fresh, single-use liveness challenge for this session. The
+    server keeps it; /liveness grades the response against the stored value
+    only. Requesting a new challenge invalidates the previous one."""
+    sess = _authorize(payload.session_id, authorization)
+    if DEFAULT_POLICY.require_sequential_steps and sess.state != "face_submitted":
+        raise HTTPException(status_code=409, detail="face must be submitted before requesting a liveness challenge")
+    ttl = DEFAULT_POLICY.liveness_challenge_ttl_seconds
+    challenge = store.issue_liveness_challenge(sess, ttl)
+    store.log_event("liveness_challenge_issued", sess.id, {"ttl_seconds": ttl})  # value deliberately not logged
+    return {"challenge": challenge, "expires_in": ttl}
+
+
 @router.post("/liveness")
 def submit_liveness(payload: LivenessSubmission, authorization: Optional[str] = Header(default=None)):
     sess = _authorize(payload.session_id, authorization)
     if DEFAULT_POLICY.require_sequential_steps and sess.state != "face_submitted":
         raise HTTPException(status_code=409, detail="face must be submitted before liveness")
 
-    challenge_ok = payload.challenge_response == payload.expected_challenge
+    # Graded ONLY against the server-issued, stored challenge (both modes);
+    # payload.expected_challenge is ignored. Consumed on every attempt.
+    challenge_status = store.consume_liveness_challenge(sess, payload.challenge_response)
+    challenge_ok = challenge_status == "ok"
 
     if VULNERABLE_MODE and payload.client_asserts_live is True:
         # Intentional flaw: trusts a client-supplied liveness assertion
@@ -174,8 +201,12 @@ def submit_liveness(payload: LivenessSubmission, authorization: Optional[str] = 
 
     sess.liveness_passed = passed
     sess.state = "liveness_submitted"
-    store.log_event("liveness_submitted", sess.id, {"passed": passed, "vulnerable_mode": VULNERABLE_MODE})
-    return {"status": "liveness_submitted", "passed": passed}
+    store.log_event(
+        "liveness_submitted",
+        sess.id,
+        {"passed": passed, "challenge_status": challenge_status, "vulnerable_mode": VULNERABLE_MODE},
+    )
+    return {"status": "liveness_submitted", "passed": passed, "challenge_status": challenge_status}
 
 
 @router.post("/decision")

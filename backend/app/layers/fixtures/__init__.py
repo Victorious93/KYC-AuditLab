@@ -7,16 +7,18 @@ from typing import Optional
 
 import requests
 
+from ...orchestrator.scope import ParsedTarget, target_url
+
 FIXTURE_DIR = Path(__file__).resolve().parent
 LAYER2_SCORES_CSV = FIXTURE_DIR / "layer2_match_scores.csv"
 LAYER3_PAD_CSV = FIXTURE_DIR / "layer3_pad_cases.csv"
 
 
-def simulator_flow(target: str, identity_key: str, match_score: float, expected_challenge: str,
+def simulator_flow(target: "str | ParsedTarget", identity_key: str, match_score: float, expected_challenge: str,
                    challenge_response: str, client_asserts_live: Optional[bool] = None) -> dict:
     """session -> valid synthetic document -> face score -> liveness -> decision.
     Returns {"liveness_passed": bool, "decision": str}."""
-    base = f"http://{target}/simulator"
+    base = target_url(target, "/simulator")  # canonical parse; never the raw string
     s = requests.post(f"{base}/session", json={"identity_key": identity_key}, timeout=5)
     s.raise_for_status()
     sess = s.json()
@@ -30,7 +32,17 @@ def simulator_flow(target: str, identity_key: str, match_score: float, expected_
 
     post("/document", {"document_number": "SPECIMEN01", "document_type": "passport", "expiry_date": "2099-01-01"})
     post("/face", {"match_score": match_score})
-    body = {"challenge_response": challenge_response, "expected_challenge": expected_challenge}
+    # The server issues and stores the challenge. The fixture's
+    # (expected_challenge, challenge_response) pair encodes the case:
+    # equal  -> a genuine user answers the challenge actually issued;
+    # differ -> an attacker submits the recorded wrong/stale response and,
+    #           as a self-consistent forgery, also claims that value was the
+    #           expected one. A sound server ignores the claim.
+    issued = post("/liveness/challenge", {})["challenge"]
+    if challenge_response == expected_challenge:
+        body = {"challenge_response": issued}
+    else:
+        body = {"challenge_response": challenge_response, "expected_challenge": challenge_response}
     if client_asserts_live is not None:
         body["client_asserts_live"] = client_asserts_live
     live = post("/liveness", body)

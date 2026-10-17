@@ -1,5 +1,7 @@
 import csv
 
+import pytest
+
 from app.layers.fixtures import LAYER2_SCORES_CSV, LAYER3_PAD_CSV
 from app.layers.layer2_biometric import _load_scores_csv, compute_far_frr
 from app.layers.layer3_liveness import PADCase, evaluate_detector
@@ -35,13 +37,30 @@ def test_biometric_simulator_matches_offline_threshold(live_server):
     assert "info" in r.finding_severities
 
 
-def test_liveness_pad_flags_client_assertion_in_vulnerable_mode(live_server):
+@pytest.mark.parametrize("vulnerable", [True, False], ids=["vulnerable_mode", "hardened_mode"])
+def test_liveness_pad_metrics_per_simulator_mode(live_server, monkeypatch, vulnerable):
+    """Explicit about the simulator mode (set here, not inherited from
+    IDENTITYSHIELD_SIM_VULNERABLE), so the suite passes in both modes."""
+    from app.simulator import app as sim
+
+    monkeypatch.setattr(sim, "VULNERABLE_MODE", vulnerable)
     r = run_module(live_server, "liveness.pad.apcer_bpcer_evaluation")
-    # Vulnerable simulator trusts client_asserts_live -> 20/60 attacks accepted.
-    assert r.status == "failed", r.summary
-    assert "APCER=0.3333, BPCER=0.0000" in r.summary, r.summary
-    assert "'client_asserts_live': '20/20'" in r.summary
-    assert "high" in r.finding_severities
+    if vulnerable:
+        # Vulnerable simulator trusts client_asserts_live -> 20/60 attacks accepted.
+        assert r.status == "failed", r.summary
+        assert "APCER=0.3333, BPCER=0.0000, ACER=0.1667" in r.summary, r.summary
+        assert "'client_asserts_live': '20/20'" in r.summary
+        assert "high" in r.finding_severities
+    else:
+        # Hardened: server-issued single-use challenge; the 40 wrong/stale
+        # attacks also send a self-consistent forged expected_challenge and
+        # are still rejected, because the client value is ignored.
+        assert r.status == "passed", r.summary
+        assert "APCER=0.0000, BPCER=0.0000, ACER=0.0000" in r.summary, r.summary
+        assert "'client_asserts_live': '0/20'" in r.summary
+        assert "'wrong_challenge_response': '0/20'" in r.summary
+        assert "'stale_challenge_replay': '0/20'" in r.summary
+        assert "'genuine': '60/60'" in r.summary
 
 
 def test_liveness_pad_with_custom_cases_still_supported(live_server):
@@ -53,8 +72,18 @@ def test_liveness_pad_with_custom_cases_still_supported(live_server):
 def test_android_storage_module_skips_without_device(live_server, monkeypatch):
     from app.layers.layer4_android import harness
 
+    import requests
+
+    from app.orchestrator import scope
+
+    from .helpers import ADMIN_HEADERS
+
+    # Layer 4 targets must be Android package names (a host:port is now
+    # rejected by scope before adb is touched), so scope a package.
+    monkeypatch.setattr(scope.settings, "allowed_targets", list(scope.settings.allowed_targets) + ["com.example.kyc"])
+    requests.post(f"http://{live_server}/scope", json={"target": "com.example.kyc"}, headers=ADMIN_HEADERS, timeout=5)
     monkeypatch.delenv("IDENTITYSHIELD_ADB", raising=False)
     monkeypatch.setattr(harness.shutil, "which", lambda _: None)
-    r = run_module(live_server, "android.storage.local_data_at_rest")
+    r = run_module("com.example.kyc", "android.storage.local_data_at_rest")
     assert r.status == "skipped"
     assert r.summary.startswith("skipped: no device")
