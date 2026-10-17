@@ -95,6 +95,16 @@ docker compose up --build
 
 Database credentials are read from `.env` (git-ignored) — nothing is hard-coded in `docker-compose.yml`, and compose fails fast if `POSTGRES_USER`/`POSTGRES_PASSWORD` are unset. Postgres is **not** published on the host; only the backend reaches it over the internal compose network. To inspect the DB locally, uncomment the `127.0.0.1:5432:5432` mapping in `docker-compose.yml` (loopback only). Note: if the password contains URL-special characters (`@ : / %`), URL-encode it, since it is interpolated into `DATABASE_URL`.
 
+### Postgres enum migration (existing databases)
+
+There is no migration tool yet; the schema comes from `create_all()`, which never alters an existing enum type. SQLAlchemy stores enum member **names**, so the Postgres `runstatus` labels are upper-case. A database created before the `SKIPPED` status existed rejects skipped Layer 4 runs with `invalid input value for enum runstatus: "SKIPPED"`. On startup the backend now runs, on PostgreSQL only and idempotently, `ALTER TYPE <enum> ADD VALUE IF NOT EXISTS '<NAME>'` for every `runstatus`/`severity` member (`app.db.ensure_postgres_enum_labels`). To apply it by hand instead:
+
+```sql
+ALTER TYPE runstatus ADD VALUE IF NOT EXISTS 'SKIPPED';
+```
+
+Use upper-case `'SKIPPED'`; a lower-case `'skipped'` label does not fix the error.
+
 Written and reviewed; **not run end-to-end** in the environment that wrote these docs (no Docker daemon). See `docs/LIMITATIONS.md`.
 
 ## Screenshots
