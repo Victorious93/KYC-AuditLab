@@ -10,8 +10,9 @@ from ..config import get_settings
 from ..evidence.redact import redact
 from ..models import Finding as FindingModel
 from ..models import RunStatus, TestRun
-from .registry import Capability, TestContext, registry
+from .registry import Capability, Layer, TestContext, registry
 from .scope import ScopeViolation, assert_in_scope
+from .scope_android import validate_android_package
 
 settings = get_settings()
 
@@ -47,6 +48,18 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
         run.finished_at = dt.datetime.utcnow()
         db.commit()
         return run
+
+    # Layer 4 targets go to `adb shell` on a device: require a strict Android
+    # package name on top of the host allowlist + ScopeEntry above.
+    if module.layer == Layer.ANDROID:
+        try:
+            validate_android_package(target)
+        except ScopeViolation as exc:
+            run.status = RunStatus.BLOCKED_SCOPE
+            run.summary = str(exc)
+            run.finished_at = dt.datetime.utcnow()
+            db.commit()
+            return run
 
     os.makedirs(settings.evidence_dir, exist_ok=True)
     ctx = TestContext(target=target, db=db, evidence_dir=settings.evidence_dir, params=params or {}, scoped=scoped)
