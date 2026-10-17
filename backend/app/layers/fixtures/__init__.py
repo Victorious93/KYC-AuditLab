@@ -30,7 +30,17 @@ def simulator_flow(target: str, identity_key: str, match_score: float, expected_
 
     post("/document", {"document_number": "SPECIMEN01", "document_type": "passport", "expiry_date": "2099-01-01"})
     post("/face", {"match_score": match_score})
-    body = {"challenge_response": challenge_response, "expected_challenge": expected_challenge}
+    # The server issues and stores the challenge. The fixture's
+    # (expected_challenge, challenge_response) pair encodes the case:
+    # equal  -> a genuine user answers the challenge actually issued;
+    # differ -> an attacker submits the recorded wrong/stale response and,
+    #           as a self-consistent forgery, also claims that value was the
+    #           expected one. A sound server ignores the claim.
+    issued = post("/liveness/challenge", {})["challenge"]
+    if challenge_response == expected_challenge:
+        body = {"challenge_response": issued}
+    else:
+        body = {"challenge_response": challenge_response, "expected_challenge": challenge_response}
     if client_asserts_live is not None:
         body["client_asserts_live"] = client_asserts_live
     live = post("/liveness", body)

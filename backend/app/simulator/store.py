@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import hmac
+import secrets
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -20,6 +22,9 @@ class VerificationSession:
     decision: Optional[str] = None  # "approved" | "rejected"
     token: str = field(default_factory=lambda: uuid.uuid4().hex)
     used_nonces: List[str] = field(default_factory=list)
+    # Server-issued liveness challenge (single-use). Never taken from the client.
+    liveness_challenge: Optional[str] = None
+    liveness_challenge_expires_at: Optional[dt.datetime] = None
 
 
 class SimulatorStore:
@@ -57,6 +62,34 @@ class SimulatorStore:
 
     def is_expired(self, sess: VerificationSession) -> bool:
         return dt.datetime.utcnow() > sess.expires_at
+
+    def issue_liveness_challenge(self, sess: VerificationSession, ttl_seconds: int) -> str:
+        """Issue (or replace) the session's single-use liveness challenge."""
+        nonce = "CHAL-" + secrets.token_hex(12)
+        with self._lock:
+            sess.liveness_challenge = nonce
+            sess.liveness_challenge_expires_at = dt.datetime.utcnow() + dt.timedelta(seconds=ttl_seconds)
+        return nonce
+
+    def consume_liveness_challenge(self, sess: VerificationSession, response: str) -> str:
+        """Atomically consume the session's challenge and grade `response`.
+        Returns "ok" | "missing" | "expired" | "replayed" | "mismatch". The
+        stored challenge is cleared on EVERY attempt, so each challenge can be
+        answered at most once, right or wrong."""
+        with self._lock:
+            expected = sess.liveness_challenge
+            expires = sess.liveness_challenge_expires_at
+            sess.liveness_challenge = None
+            sess.liveness_challenge_expires_at = None
+            if expected is not None:
+                sess.used_nonces.append(expected)
+        if expected is None:
+            return "replayed" if response in sess.used_nonces else "missing"
+        if expires is None or dt.datetime.utcnow() > expires:
+            return "expired"
+        if not hmac.compare_digest(expected.encode(), str(response).encode()):
+            return "mismatch"
+        return "ok"
 
     def log_event(self, kind: str, session_id: str, data: dict) -> None:
         self.audit_events.append(
