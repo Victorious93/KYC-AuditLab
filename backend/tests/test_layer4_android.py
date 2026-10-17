@@ -182,7 +182,7 @@ def test_runner_records_skipped(monkeypatch):
     from app.orchestrator import runner
     from tests.helpers import run_module
 
-    monkeypatch.setattr(runner, "assert_in_scope", lambda db, t, **kw: None)
+    monkeypatch.setattr(runner, "assert_in_scope", lambda db, t: None)
     monkeypatch.delenv("IDENTITYSHIELD_ADB", raising=False)
     monkeypatch.setattr(harness.shutil, "which", lambda _: None)
     snap = run_module(PKG, "android.permissions.dangerous_permission_audit")

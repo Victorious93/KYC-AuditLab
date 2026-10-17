@@ -32,7 +32,7 @@ DEFAULT_APK = _REPO_ROOT / "android-companion" / "app" / "build" / "outputs" / "
 
 Runner = Callable[..., subprocess.CompletedProcess]
 
-# Must match orchestrator.scope.ANDROID_PACKAGE_RE. Re-checked here so the
+# Must match orchestrator.scope_android.ANDROID_PACKAGE_RE. Re-checked here so the
 # harness is safe even when called directly (not via the runner).
 ANDROID_PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 ANDROID_PACKAGE_MAX_LEN = 255

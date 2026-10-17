@@ -151,7 +151,7 @@ def test_runner_records_skipped_for_both(monkeypatch):
     from app.orchestrator import runner
     from tests.helpers import run_module
 
-    monkeypatch.setattr(runner, "assert_in_scope", lambda db, t, **kw: None)
+    monkeypatch.setattr(runner, "assert_in_scope", lambda db, t: None)
     monkeypatch.delenv("IDENTITYSHIELD_ADB", raising=False)
     monkeypatch.setattr(harness.shutil, "which", lambda _: None)
     for mid in ("android.storage.local_data_at_rest", "android.network.transport_security_config"):

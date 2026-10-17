@@ -14,9 +14,10 @@ import pytest
 
 from app.layers import layer4_android as l4
 from app.layers.layer4_android import harness
-from app.orchestrator import scope
+from app.orchestrator import scope, scope_android
 from app.orchestrator.registry import TestContext
-from app.orchestrator.scope import ScopeViolation, validate_android_package
+from app.orchestrator.scope import ScopeViolation
+from app.orchestrator.scope_android import validate_android_package
 
 from .test_layer4_android import FakeAdb, _instr_stdout, _payload
 
@@ -90,8 +91,8 @@ def test_module_never_calls_adb_for_injected_target(bad, monkeypatch):
 
 
 def test_patterns_in_scope_and_harness_are_identical():
-    assert scope.ANDROID_PACKAGE_RE.pattern == harness.ANDROID_PACKAGE_RE.pattern
-    assert scope.ANDROID_PACKAGE_RE.pattern == r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$"
+    assert scope_android.ANDROID_PACKAGE_RE.pattern == harness.ANDROID_PACKAGE_RE.pattern
+    assert scope_android.ANDROID_PACKAGE_RE.pattern == r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$"
 
 
 def test_remote_shell_args_are_quoted():
@@ -130,4 +131,19 @@ def test_runner_blocks_injection_even_if_host_allowlisted_and_scoped(bad, monkey
     )
     snap = run_module(bad, "android.permissions.dangerous_permission_audit")
     assert snap.status == "blocked_scope", (bad, snap.status, snap.summary)
+
+
+def test_runner_rejects_non_package_android_target_with_clear_reason(monkeypatch):
+    """With the host checks stubbed out, the package-name gate alone blocks
+    the injection and says why."""
+    from app.orchestrator import runner
+    from tests.helpers import run_module
+
+    monkeypatch.setattr(runner, "assert_in_scope", lambda db, t: None)
+    real = harness.run_integrity_checks
+    monkeypatch.setattr(
+        harness, "run_integrity_checks", lambda *a, **k: real(*a, runner=ExplodingRunner(), adb="/usr/bin/adb", **k)
+    )
+    snap = run_module("com.android.settings/ ;touch /data/local/tmp/x", "android.permissions.dangerous_permission_audit")
+    assert snap.status == "blocked_scope"
     assert "not a valid Android package name" in snap.summary
