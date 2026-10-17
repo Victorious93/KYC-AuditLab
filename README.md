@@ -84,7 +84,16 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`, and `VITE_API_KEY` to a key with the roles you need (the dashboard uses both `admin` and `operator` routes). This embeds the key in the browser bundle — local use only.
+Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`, and `VITE_API_KEY` to a key with the roles you need (the dashboard uses both `admin` and `operator` routes). `npm run dev` listens on localhost only.
+
+> **Dashboard key exposure.** Vite inlines `VITE_API_KEY` into the JavaScript it serves. Anyone who can load the dashboard (or any `npm run build` output made with the key set) can read the key and use it against the API with full `admin`+`operator` rights. Treat it as local-only:
+> - use a dedicated, throwaway key for the dashboard, never a shared or long-lived one;
+> - keep the dashboard and API on loopback (the compose file now binds both to `127.0.0.1`);
+> - never deploy or share a bundle built with a real key.
+>
+> Moving the key out of the bundle (a same-origin proxy that injects the header, or a key entered at runtime and held in memory) is still open; see `docs/LIMITATIONS.md`.
+
+The backend answers CORS only for an explicit origin allowlist, `IDENTITYSHIELD_CORS_ORIGINS` (comma-separated). It defaults to `http://localhost:5173,http://127.0.0.1:5173` and allows the `X-API-Key` and `Content-Type` headers, with no credentials. `*` is refused at startup. If you serve the dashboard from another origin, add that origin explicitly.
 
 ## Docker Compose (Postgres)
 
@@ -93,7 +102,7 @@ cp .env.example .env   # then set a strong POSTGRES_PASSWORD (and API keys)
 docker compose up --build
 ```
 
-Database credentials are read from `.env` (git-ignored) — nothing is hard-coded in `docker-compose.yml`, and compose fails fast if `POSTGRES_USER`/`POSTGRES_PASSWORD` are unset. Postgres is **not** published on the host; only the backend reaches it over the internal compose network. To inspect the DB locally, uncomment the `127.0.0.1:5432:5432` mapping in `docker-compose.yml` (loopback only). Note: if the password contains URL-special characters (`@ : / %`), URL-encode it, since it is interpolated into `DATABASE_URL`.
+The backend (`8000`) and dashboard (`5173`) are published on **`127.0.0.1` only**, so neither the API, the unauthenticated `/simulator` endpoints, nor the dashboard bundle (which carries `VITE_API_KEY`) is reachable from your LAN. Don't change these to `"8000:8000"` / `"5173:5173"` (all interfaces). Database credentials are read from `.env` (git-ignored) — nothing is hard-coded in `docker-compose.yml`, and compose fails fast if `POSTGRES_USER`/`POSTGRES_PASSWORD` are unset. Postgres is **not** published on the host; only the backend reaches it over the internal compose network. To inspect the DB locally, uncomment the `127.0.0.1:5432:5432` mapping in `docker-compose.yml` (loopback only). Note: if the password contains URL-special characters (`@ : / %`), URL-encode it, since it is interpolated into `DATABASE_URL`.
 
 Written and reviewed; **not run end-to-end** in the environment that wrote these docs (no Docker daemon). See `docs/LIMITATIONS.md`.
 
