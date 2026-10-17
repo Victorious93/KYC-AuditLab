@@ -122,12 +122,22 @@ liveness flaw: it honors `client_asserts_live=true` (#21).
 The dashboard bundle contains no credentials. The operator types an API key
 at runtime; the dashboard sends it once to `POST /auth/session` (in
 `X-API-Key`) and gets back a short-lived token
-`iss1.<base64url payload>.<HMAC-SHA256>` with payload `{sub, kfp, iat, exp}`.
+`iss1.<base64url payload>.<HMAC-SHA256>` with payload `{sub, kfp, iat, exp, jti}`.
 `kfp` is a keyed fingerprint of the issuing key, so on every request the
 token is re-bound to a key that is still configured; rotating or removing
 the key revokes its tokens, and roles come from the current key config.
 `/auth/session` accepts only an API key, never a token. The token is sent as
 `Authorization: Bearer` and kept in the tab's `sessionStorage`; any 401
-returns the dashboard to its sign-in screen. `vite.config.ts` refuses
+returns the dashboard to its sign-in screen. **Sign out** calls
+`POST /auth/logout`, which puts the token's `jti` on an in-memory denylist
+until the token's `exp`. Failed `/auth/session` attempts are counted per
+direct peer IP (`X-Forwarded-For` is not trusted) in an in-memory sliding
+window and answered with `429` + `Retry-After` once over the limit
+(`IDENTITYSHIELD_AUTH_RATE_LIMIT_MAX` / `_WINDOW_SECONDS`). At startup
+`check_session_config()` warns if `IDENTITYSHIELD_SESSION_SECRET` is unset
+outside `IDENTITYSHIELD_ENV=local`. Denylist, limiter and the fallback
+secret are per process: multi-worker or multi-replica deployments need a
+shared `IDENTITYSHIELD_SESSION_SECRET`, and revocation/limits are per worker
+(a shared store such as Redis would be needed to make them global). `vite.config.ts` refuses
 secret-looking `VITE_*` variables, and CI's `dashboard-build` job scans the
 built bundle for key-like content (`scripts/check-bundle-secrets.mjs`).

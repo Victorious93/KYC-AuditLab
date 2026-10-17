@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .auth import check_session_config
 from .config import get_settings
 
 from .db import init_db
@@ -14,6 +15,7 @@ from .simulator.app import router as simulator_router
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    check_session_config()
     init_db()
     load_all_modules()
     yield

@@ -45,6 +45,23 @@ immediately, and the roles come from the current key config, not the token.
 
 A token cannot be used to mint another token (``/auth/session`` requires the
 API key itself), so a stolen token dies at its expiry at the latest.
+
+Each token carries a random ``jti``. ``POST /auth/logout`` (Bearer) adds that
+jti to an in-memory denylist kept until the token's own expiry, so a signed
+out token is rejected server-side even before it expires.
+
+Failed ``POST /auth/session`` attempts are rate-limited per client IP with an
+in-memory sliding window (429 + Retry-After):
+
+    IDENTITYSHIELD_AUTH_RATE_LIMIT_MAX             failures allowed per window,
+                                                   default 10, 0 disables
+    IDENTITYSHIELD_AUTH_RATE_LIMIT_WINDOW_SECONDS  window length, default 300
+
+Single-process limitation: the denylist, the rate limiter and the random
+fallback secret all live in process memory. With several uvicorn/gunicorn
+workers (or replicas) set the same IDENTITYSHIELD_SESSION_SECRET everywhere,
+and be aware that revocations and rate-limit counters are per worker and are
+lost on restart. A shared store (e.g. Redis/DB) would be needed for that.
 """
 from __future__ import annotations
 
@@ -56,8 +73,10 @@ import logging
 import os
 import secrets
 import time
+import threading
+from collections import deque
 from dataclasses import dataclass
-from typing import FrozenSet, List, Optional, Tuple
+from typing import Deque, Dict, FrozenSet, List, Optional, Tuple
 
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
@@ -214,15 +233,29 @@ def _sign(secret: bytes, signing_input: str) -> str:
 def issue_session_token(entry: _KeyEntry, secret: bytes, now: Optional[float] = None) -> Tuple[str, int]:
     iat = int(time.time() if now is None else now)
     exp = iat + session_ttl_seconds()
-    payload = {"sub": entry.identity, "kfp": _key_fingerprint(secret, entry), "iat": iat, "exp": exp}
+    payload = {"sub": entry.identity, "kfp": _key_fingerprint(secret, entry), "iat": iat, "exp": exp,
+               "jti": secrets.token_urlsafe(16)}
     body = _b64e(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
     signing_input = f"{SESSION_TOKEN_PREFIX}.{body}"
     return f"{signing_input}.{_sign(secret, signing_input)}", exp
 
 
+@dataclass(frozen=True)
+class SessionClaims:
+    entry: _KeyEntry
+    jti: str
+    exp: int
+
+
 def verify_session_token(token: str, entries: List[_KeyEntry]) -> Optional[_KeyEntry]:
     """Return the currently configured key entry the token is bound to, or
-    None if the token is malformed, forged, expired, or its key is gone."""
+    None if the token is malformed, forged, expired, revoked, or its key is
+    gone."""
+    claims = verify_session_claims(token, entries)
+    return claims.entry if claims else None
+
+
+def verify_session_claims(token: str, entries: List[_KeyEntry]) -> Optional[SessionClaims]:
     secret = session_secret()
     if secret is None:
         return None
@@ -234,17 +267,146 @@ def verify_session_token(token: str, entries: List[_KeyEntry]) -> Optional[_KeyE
         return None
     try:
         payload = json.loads(_b64d(parts[1]))
-        sub, kfp, exp = payload["sub"], payload["kfp"], payload["exp"]
+        sub, kfp, exp, jti = payload["sub"], payload["kfp"], payload["exp"], payload["jti"]
     except (ValueError, KeyError, TypeError):
         return None
     if not isinstance(exp, int) or isinstance(exp, bool) or exp <= time.time():
+        return None
+    if not isinstance(jti, str) or not jti or is_revoked(jti):
         return None
     match: Optional[_KeyEntry] = None
     for entry in entries:  # bind to a key that is still configured
         if (hmac.compare_digest(_key_fingerprint(secret, entry), str(kfp))
                 and entry.identity == sub and match is None):
             match = entry
-    return match
+    return SessionClaims(match, jti, exp) if match else None
+
+
+# --- revocation (jti denylist) -------------------------------------------------
+
+_revoked: Dict[str, int] = {}
+_revoked_lock = threading.Lock()
+
+
+def _purge_revoked(now: float) -> None:
+    for jti in [j for j, exp in _revoked.items() if exp <= now]:
+        del _revoked[jti]
+
+
+def revoke_jti(jti: str, exp: int) -> None:
+    """Deny this token id until its expiry (after which the signature check
+    rejects it anyway, so the entry can be dropped)."""
+    with _revoked_lock:
+        _purge_revoked(time.time())
+        _revoked[jti] = exp
+
+
+def is_revoked(jti: str) -> bool:
+    with _revoked_lock:
+        _purge_revoked(time.time())
+        return jti in _revoked
+
+
+def revoked_count() -> int:
+    with _revoked_lock:
+        _purge_revoked(time.time())
+        return len(_revoked)
+
+
+# --- /auth/session failed-attempt rate limit ----------------------------------
+
+RATE_LIMIT_MAX_DEFAULT = 10
+RATE_LIMIT_WINDOW_DEFAULT = 300
+
+
+def _env_int(name: str, default: int, lo: int) -> int:
+    try:
+        v = int(os.getenv(name, str(default)))
+    except ValueError:
+        log.warning("Invalid %s; using %d", name, default)
+        return default
+    return max(lo, v)
+
+
+def rate_limit_max() -> int:
+    return _env_int("IDENTITYSHIELD_AUTH_RATE_LIMIT_MAX", RATE_LIMIT_MAX_DEFAULT, 0)
+
+
+def rate_limit_window() -> int:
+    return _env_int("IDENTITYSHIELD_AUTH_RATE_LIMIT_WINDOW_SECONDS", RATE_LIMIT_WINDOW_DEFAULT, 1)
+
+
+class FailedAttemptLimiter:
+    """Sliding-window counter of failed attempts per client key (IP).
+    In-memory and per process; see module docstring."""
+
+    def __init__(self) -> None:
+        self._hits: Dict[str, Deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def _prune(self, client: str, now: float, window: int) -> Deque[float]:
+        q = self._hits.get(client)
+        if q is None:
+            return deque()
+        while q and q[0] <= now - window:
+            q.popleft()
+        if not q:
+            del self._hits[client]
+        return q
+
+    def retry_after(self, client: str) -> int:
+        """Seconds until another attempt is allowed; 0 if allowed now."""
+        limit, window = rate_limit_max(), rate_limit_window()
+        if limit <= 0:
+            return 0
+        now = time.time()
+        with self._lock:
+            q = self._prune(client, now, window)
+            if len(q) < limit:
+                return 0
+            # Oldest failure that must age out to get back under the limit.
+            return max(1, int(q[len(q) - limit] + window - now + 0.999))
+
+    def record_failure(self, client: str) -> None:
+        if rate_limit_max() <= 0:
+            return
+        now = time.time()
+        with self._lock:
+            self._prune(client, now, rate_limit_window())
+            self._hits.setdefault(client, deque()).append(now)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._hits.clear()
+
+
+session_rate_limiter = FailedAttemptLimiter()
+
+
+def reset_auth_state() -> None:
+    """Test helper: clear the denylist and rate-limit counters."""
+    session_rate_limiter.reset()
+    with _revoked_lock:
+        _revoked.clear()
+
+
+def check_session_config() -> List[str]:
+    """Startup sanity check; logs and returns warnings."""
+    warnings: List[str] = []
+    env = os.getenv("IDENTITYSHIELD_ENV", "local")
+    raw = os.getenv("IDENTITYSHIELD_SESSION_SECRET", "")
+    if not raw and env != "local":
+        warnings.append(
+            f"IDENTITYSHIELD_SESSION_SECRET is unset (IDENTITYSHIELD_ENV={env!r}): using a random "
+            "per-process secret. Session tokens die on restart and are NOT valid across workers/"
+            "replicas. Set a shared secret of >= 32 chars.")
+    elif raw and len(raw) < SESSION_SECRET_MIN_LEN:
+        warnings.append(
+            f"IDENTITYSHIELD_SESSION_SECRET is shorter than {SESSION_SECRET_MIN_LEN} chars: "
+            "session tokens are disabled.")
+    for w in warnings:
+        log.warning(w)
+    return warnings
 
 
 # --- FastAPI dependencies ----------------------------------------------------

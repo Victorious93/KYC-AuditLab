@@ -72,3 +72,14 @@ def _reset_simulator(live_server):
         timeout=5,
     )
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_auth_state():
+    """Rate-limit counters and the token denylist are process-global; keep
+    tests independent."""
+    from app.auth import reset_auth_state
+
+    reset_auth_state()
+    yield
+    reset_auth_state()

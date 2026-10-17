@@ -103,15 +103,22 @@ and allowlisted hostname - see `THREAT_MODEL.md`.
 - The dashboard no longer has an API key in its bundle: the operator enters
   a key at runtime, it is exchanged at `POST /auth/session` for a
   short-lived signed token, and only the token is kept (tab
-  `sessionStorage`). Remaining limits: session tokens are stateless, so
-  there is no server-side sign-out or per-token revocation (a leaked token
-  is valid until it expires, default 1 h, or until its API key is
-  rotated/removed); there is no rate limit on `/auth/session`; the token in
+  `sessionStorage`). Remaining limits: sign-out revocation (`POST /auth/logout`,
+  `jti` denylist) and the `/auth/session` failed-attempt rate limit are
+  **in-memory and per process**: they reset on restart, are not shared
+  between uvicorn workers or replicas (a token revoked on one worker still
+  works on another; an attacker gets the limit once per worker), and a
+  leaked token that nobody signs out is valid until it expires (default
+  1 h) or its key is rotated. The limiter keys on the direct peer IP, so
+  behind a reverse proxy all clients share one bucket (`X-Forwarded-For`
+  is deliberately not trusted), and an attacker can lock a shared IP out
+  for one window. The token in
   `sessionStorage` is readable by any script running on the dashboard
   origin (XSS would expose it, though not the long-lived key); there are no
   narrower dashboard-specific roles. With `IDENTITYSHIELD_SESSION_SECRET`
   unset, a random per-process secret is used, so tokens do not work across
-  several uvicorn workers or restarts. Mitigations still in place: compose
+  several uvicorn workers or restarts (the server logs a startup warning
+  when this happens outside `IDENTITYSHIELD_ENV=local`). Mitigations still in place: compose
   binds 8000 and 5173 to `127.0.0.1`, and the CORS allowlist
   (`IDENTITYSHIELD_CORS_ORIGINS`, never `*`) admits only the dashboard
   origin. The Droidcommand-AI controller and Android APKs do not use

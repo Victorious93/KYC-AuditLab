@@ -38,7 +38,7 @@ export function App() {
       session={session}
       onSignOut={() => {
         setNotice("Signed out.");
-        signOut();
+        void signOut();
       }}
     />
   );
