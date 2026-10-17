@@ -83,8 +83,17 @@ and allowlisted hostname - see `THREAT_MODEL.md`.
   rotating the client-supplied identity value - this is a deliberate,
   documented fixture flaw for the framework to detect, not a bug in
   IdentityShield itself.
-- Dashboard has no auth and talks to the backend directly - fine for local
-  use, not meant for a shared/multi-tenant deployment yet.
+- The API requires `X-API-Key` (admin/operator roles), but the dashboard
+  gets its key from `VITE_API_KEY`, which Vite inlines into the browser
+  bundle: anyone who can load the dashboard can read the key. Mitigations in
+  place: compose binds 8000 and 5173 to `127.0.0.1` only, `npm run dev`
+  listens on localhost, and the backend's CORS allowlist
+  (`IDENTITYSHIELD_CORS_ORIGINS`, default `http://localhost:5173`,
+  `http://127.0.0.1:5173`, never `*`) admits only the dashboard origin. Not
+  done: removing the key from the bundle (same-origin proxy or runtime key
+  entry) and narrower dashboard-specific keys. Local use only; not meant for
+  a shared/multi-tenant deployment. The dashboard has still not been
+  exercised against a live backend in a real browser.
 - `docker-compose.yml` has not been run end-to-end in this environment (no
   Docker daemon available here); it was written and reviewed, not executed.
   `backend/tests/` were run directly against a locally-started process via
