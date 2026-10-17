@@ -53,6 +53,8 @@ curl -X POST localhost:8000/auth/session -H 'X-API-Key: devkey'
 curl -H "Authorization: Bearer $TOKEN" localhost:8000/tests/modules
 ```
 
+- **Controllers / scripts (e.g. Droidcommand-AI):** use the reference token client in `backend/app/client/` (`IdentityShieldClient`, or `python -m app.client whoami|modules|run|runs|run-get|scope` with `IDENTITYSHIELD_API_KEY` set at runtime). It keeps the token in memory, refreshes it before expiry or after a 401, honours `Retry-After`, logs out on exit and refuses non-loopback URLs by default. Contract: [`docs/CONTROLLER_INTEGRATION.md`](docs/CONTROLLER_INTEGRATION.md). The Android companion APK does not call the API (the backend drives it over `adb`), so it needs no key or token.
+
 - **Local dev option:** `IDENTITYSHIELD_DEV_API_KEYS` takes the same format with a *plaintext* key (e.g. `dev:admin+operator:devkey`). It is honoured **only** when `IDENTITYSHIELD_ENV=local` (the default) and ignored otherwise. Never use it in a shared deployment.
 
 See [`.env.example`](.env.example).

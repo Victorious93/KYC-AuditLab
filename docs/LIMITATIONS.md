@@ -121,8 +121,12 @@ and allowlisted hostname - see `THREAT_MODEL.md`.
   when this happens outside `IDENTITYSHIELD_ENV=local`). Mitigations still in place: compose
   binds 8000 and 5173 to `127.0.0.1`, and the CORS allowlist
   (`IDENTITYSHIELD_CORS_ORIGINS`, never `*`) admits only the dashboard
-  origin. The Droidcommand-AI controller and Android APKs do not use
-  session tokens yet.
+  origin. Non-dashboard clients: `backend/app/client/` is a reference
+  token client + CLI for controllers such as Droidcommand-AI (contract in
+  `docs/CONTROLLER_INTEGRATION.md`); Droidcommand-AI itself lives outside
+  this repo and its adoption is not verified here. The Android companion
+  APK does not call the API at all (results go through `adb am
+  instrument`), so it holds neither keys nor tokens.
 - `docker-compose.yml` has not been run end-to-end in this environment (no
   Docker daemon available here); it was written and reviewed, not executed.
   `backend/tests/` were run directly against a locally-started process via

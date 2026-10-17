@@ -8,6 +8,8 @@ backend/app/
                            orchestrator routers; CORS allowlist for the dashboard (#22)
   auth.py                  X-API-Key auth: SHA-256-hashed keys, admin / operator roles (non-hierarchical);
                            short-lived HMAC session tokens (Authorization: Bearer)
+  client/                  Reference session-token client for controllers/host tools (IdentityShieldClient)
+                           + CLI (python -m app.client); contract: docs/CONTROLLER_INTEGRATION.md
   config.py                Settings (DB URL, allowlist, local-only flag, evidence dir, CORS origins)
   db.py / models.py        SQLAlchemy models: TestRun, Finding, ScopeEntry; init_db() = create_all()
                            + PostgreSQL enum-label helper (#20)
