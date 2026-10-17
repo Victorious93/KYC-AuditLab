@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -30,9 +32,33 @@ DEFAULT_APK = _REPO_ROOT / "android-companion" / "app" / "build" / "outputs" / "
 
 Runner = Callable[..., subprocess.CompletedProcess]
 
+# Must match orchestrator.scope.ANDROID_PACKAGE_RE. Re-checked here so the
+# harness is safe even when called directly (not via the runner).
+ANDROID_PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
+ANDROID_PACKAGE_MAX_LEN = 255
+
 
 class HarnessError(RuntimeError):
     """adb was present and a device attached, but something went wrong."""
+
+
+class InvalidPackageName(ValueError):
+    """The Layer 4 target is not a strict Android package name. Raised
+    before adb is ever invoked."""
+
+
+def validate_package_name(name: str) -> str:
+    if not isinstance(name, str) or len(name) > ANDROID_PACKAGE_MAX_LEN or not ANDROID_PACKAGE_RE.fullmatch(name):
+        raise InvalidPackageName(f"Refusing invalid Android package name {name!r}")
+    return name
+
+
+def remote_shell_args(*args: str) -> List[str]:
+    """`adb shell` joins its argv with spaces and the DEVICE's /system/bin/sh
+    re-parses the line, so every token bound for the remote shell is
+    shlex-quoted. Combined with strict package validation, nothing a caller
+    supplies can introduce shell syntax on the device."""
+    return [shlex.quote(str(a)) for a in args]
 
 
 @dataclass
@@ -111,6 +137,7 @@ def run_integrity_checks(
     runner: Runner = subprocess.run,
     adb: Optional[str] = None,
 ) -> HarnessOutcome:
+    target_package = validate_package_name(target_package)  # before any adb call
     adb = adb or find_adb()
     if not adb:
         return HarnessOutcome("skipped", "skipped: no device (adb not found on PATH)")
@@ -139,7 +166,7 @@ def run_integrity_checks(
 
     instr = _run(
         runner,
-        base + ["shell", "am", "instrument", "-w", "-e", "target_package", target_package, INSTRUMENTATION],
+        base + ["shell"] + remote_shell_args("am", "instrument", "-w", "-e", "target_package", target_package, INSTRUMENTATION),
         timeout=120,
     )
     if instr.returncode != 0:

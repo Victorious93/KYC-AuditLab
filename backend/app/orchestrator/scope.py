@@ -19,6 +19,7 @@ Design:
 from __future__ import annotations
 
 import ipaddress
+import re
 from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
@@ -31,6 +32,30 @@ settings = get_settings()
 
 class ScopeViolation(Exception):
     """Raised when a test target is not authorized. Must abort the run."""
+
+
+# Android package (applicationId) grammar. Layer 4 targets are package names
+# that end up on a device shell via `adb shell am instrument`, so they get this
+# strict check in addition to the host allowlist. Mirrored in
+# layers/layer4_android/harness.py (defence in depth; a test keeps them equal).
+ANDROID_PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
+ANDROID_PACKAGE_MAX_LEN = 255
+
+
+def validate_android_package(target: str) -> str:
+    """Return `target` unchanged if it is a well-formed Android package name,
+    else raise ScopeViolation. No normalization: package names are
+    case-sensitive and must reach the device exactly as validated."""
+    if (
+        not isinstance(target, str)
+        or len(target) > ANDROID_PACKAGE_MAX_LEN
+        or not ANDROID_PACKAGE_RE.fullmatch(target)
+    ):
+        raise ScopeViolation(
+            f"Target {target!r} is not a valid Android package name "
+            "(expected e.g. 'com.example.app'). Refusing to execute."
+        )
+    return target
 
 
 def _normalize_host(host: str) -> str:
@@ -92,10 +117,15 @@ def is_explicitly_authorized(db: Session, target: str) -> bool:
     return entry is not None
 
 
-def assert_in_scope(db: Session, target: str) -> None:
+def assert_in_scope(db: Session, target: str, *, android_package: bool = False) -> None:
     """Raise ScopeViolation unless `target` passes both the hard allowlist
     and has an explicit, non-revoked ScopeEntry. Call this before any
-    network, filesystem-outside-evidence, or device action."""
+    network, filesystem-outside-evidence, or device action.
+
+    With `android_package=True` (Layer 4), the target must also be a strict
+    Android package name; nothing else may reach `adb shell`."""
+    if android_package:
+        validate_android_package(target)
     if settings.enforce_local_only and not is_host_allowlisted(target):
         raise ScopeViolation(
             f"Target '{target}' is not in the server-side allowlist "

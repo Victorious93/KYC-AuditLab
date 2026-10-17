@@ -10,7 +10,7 @@ from ..config import get_settings
 from ..evidence.redact import redact
 from ..models import Finding as FindingModel
 from ..models import RunStatus, TestRun
-from .registry import Capability, TestContext, registry
+from .registry import Capability, Layer, TestContext, registry
 from .scope import ScopeViolation, assert_in_scope
 
 settings = get_settings()
@@ -40,7 +40,7 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
         return run
 
     try:
-        assert_in_scope(db, target)
+        assert_in_scope(db, target, android_package=module.layer == Layer.ANDROID)
     except ScopeViolation as exc:
         run.status = RunStatus.BLOCKED_SCOPE
         run.summary = str(exc)
