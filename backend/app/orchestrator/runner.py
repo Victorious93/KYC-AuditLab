@@ -41,7 +41,7 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
         return run
 
     try:
-        assert_in_scope(db, target)
+        scoped = assert_in_scope(db, target)
     except ScopeViolation as exc:
         run.status = RunStatus.BLOCKED_SCOPE
         run.summary = str(exc)
@@ -62,7 +62,7 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
             return run
 
     os.makedirs(settings.evidence_dir, exist_ok=True)
-    ctx = TestContext(target=target, db=db, evidence_dir=settings.evidence_dir, params=params or {})
+    ctx = TestContext(target=target, db=db, evidence_dir=settings.evidence_dir, params=params or {}, scoped=scoped)
 
     try:
         result = module.run(ctx)  # type: ignore[misc]

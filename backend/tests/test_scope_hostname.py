@@ -10,18 +10,19 @@ from app.orchestrator.scope import ScopeViolation, _hostname, is_host_allowliste
     [
         ("localhost", "localhost"),
         ("localhost:8000", "localhost"),
-        ("  LocalHost:8000 ", "localhost"),
+        ("LocalHost:8000", "localhost"),
         ("127.0.0.1", "127.0.0.1"),
         ("127.0.0.1:8000", "127.0.0.1"),
-        ("http://127.0.0.1:8000/simulator", "127.0.0.1"),
-        ("HTTP://Example.COM./path", "example.com"),
+        ("http://127.0.0.1:8000", "127.0.0.1"),
+        ("http://127.0.0.1:8000/", "127.0.0.1"),
+        ("HTTP://Example.COM.", "example.com"),
         ("::1", "::1"),
         ("[::1]", "::1"),
         ("[::1]:8000", "::1"),
-        ("http://[::1]:8000/x", "::1"),
+        ("http://[::1]:8000/", "::1"),
         ("[0:0:0:0:0:0:0:1]:8000", "::1"),
         ("2001:DB8::1", "2001:db8::1"),
-        ("http://user:pw@host.local:9/", "host.local"),
+        ("https://host.local:9", "host.local"),
     ],
 )
 def test_hostname_parsing(target, expected):
@@ -34,7 +35,7 @@ def test_ipv6_is_not_split_on_colon():
     assert _hostname("::1") != ""
 
 
-@pytest.mark.parametrize("bad", ["http://", "[::1"])
+@pytest.mark.parametrize("bad", ["http://", "[::1", "", "  LocalHost:8000 "])
 def test_unparseable_raises(bad):
     with pytest.raises(ScopeViolation):
         _hostname(bad)

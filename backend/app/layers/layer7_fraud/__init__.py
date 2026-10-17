@@ -13,7 +13,8 @@ from ...orchestrator.registry import Capability, Finding, Layer, ModuleResult, T
 
 
 def _sim_url(ctx: TestContext, path: str) -> str:
-    return f"http://{ctx.target}/simulator{path}"
+    # Built from the scope-validated host/port, never the raw target string.
+    return ctx.url(f"/simulator{path}")
 
 
 def test_identity_reuse_velocity_flagged(ctx: TestContext) -> ModuleResult:
