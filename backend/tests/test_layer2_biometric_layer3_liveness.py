@@ -72,8 +72,18 @@ def test_liveness_pad_with_custom_cases_still_supported(live_server):
 def test_android_storage_module_skips_without_device(live_server, monkeypatch):
     from app.layers.layer4_android import harness
 
+    import requests
+
+    from app.orchestrator import scope
+
+    from .helpers import ADMIN_HEADERS
+
+    # Layer 4 targets must be Android package names (a host:port is now
+    # rejected by scope before adb is touched), so scope a package.
+    monkeypatch.setattr(scope.settings, "allowed_targets", list(scope.settings.allowed_targets) + ["com.example.kyc"])
+    requests.post(f"http://{live_server}/scope", json={"target": "com.example.kyc"}, headers=ADMIN_HEADERS, timeout=5)
     monkeypatch.delenv("IDENTITYSHIELD_ADB", raising=False)
     monkeypatch.setattr(harness.shutil, "which", lambda _: None)
-    r = run_module(live_server, "android.storage.local_data_at_rest")
+    r = run_module("com.example.kyc", "android.storage.local_data_at_rest")
     assert r.status == "skipped"
     assert r.summary.startswith("skipped: no device")

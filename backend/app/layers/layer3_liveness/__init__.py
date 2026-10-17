@@ -92,7 +92,7 @@ def run_pad_evaluation(ctx: TestContext) -> ModuleResult:
         label = "provided"
     else:
         rows = load_challenge_cases(ctx.params.get("cases_csv_path") or str(LAYER3_PAD_CSV))
-        det = detector or simulator_detector(ctx.target)
+        det = detector or simulator_detector(ctx.scoped or ctx.target)
         verdicts = {r["case_id"]: det(r) for r in rows}
         cases = [PADCase(r["case_id"], r["is_attack"] == "1", 1.0 if verdicts[r["case_id"]] else 0.0) for r in rows]
         metrics = evaluate_detector(cases, lambda c: verdicts[c.case_id])

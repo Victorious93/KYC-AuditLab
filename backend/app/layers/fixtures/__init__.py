@@ -7,16 +7,18 @@ from typing import Optional
 
 import requests
 
+from ...orchestrator.scope import ParsedTarget, target_url
+
 FIXTURE_DIR = Path(__file__).resolve().parent
 LAYER2_SCORES_CSV = FIXTURE_DIR / "layer2_match_scores.csv"
 LAYER3_PAD_CSV = FIXTURE_DIR / "layer3_pad_cases.csv"
 
 
-def simulator_flow(target: str, identity_key: str, match_score: float, expected_challenge: str,
+def simulator_flow(target: "str | ParsedTarget", identity_key: str, match_score: float, expected_challenge: str,
                    challenge_response: str, client_asserts_live: Optional[bool] = None) -> dict:
     """session -> valid synthetic document -> face score -> liveness -> decision.
     Returns {"liveness_passed": bool, "decision": str}."""
-    base = f"http://{target}/simulator"
+    base = target_url(target, "/simulator")  # canonical parse; never the raw string
     s = requests.post(f"{base}/session", json={"identity_key": identity_key}, timeout=5)
     s.raise_for_status()
     sess = s.json()

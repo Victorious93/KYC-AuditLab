@@ -109,7 +109,7 @@ def run_benchmark(ctx: TestContext) -> ModuleResult:
         far, frr = compute_far_frr(samples, policy_threshold)
         mode = f"offline at threshold={policy_threshold:.2f}"
     else:
-        far, frr = simulator_far_frr(ctx.target, samples)
+        far, frr = simulator_far_frr(ctx.scoped or ctx.target, samples)
         mode = "end-to-end via target /face+/decision"
     eer, eer_threshold = estimate_eer(samples)
 

@@ -25,8 +25,14 @@ project right now. Update it in the same commit as any capability change.
   TrustManagers) and native TLS stacks are invisible, so "no pinning" is a
   low-severity observation, not proof. If manifest parsing fails the
   affected fields are reported as an info finding rather than guessed.
-  Existing Postgres databases need
-  `ALTER TYPE runstatus ADD VALUE 'skipped';` (fresh DBs via create_all are fine).
+  Existing Postgres databases created before `SKIPPED` was added need
+  `ALTER TYPE runstatus ADD VALUE IF NOT EXISTS 'SKIPPED';` (upper-case:
+  SQLAlchemy stores enum member *names*, so the labels are `'PENDING'`, ...,
+  `'SKIPPED'`). The backend now runs this automatically at startup (see
+  "Postgres enum migration" in the README); fresh DBs via create_all are fine.
+  An earlier version of this note said `ADD VALUE 'skipped'` (lower-case):
+  that label is never written by the app, so it does not fix the error. A stray
+  `'skipped'` label is harmless but cannot be dropped without recreating the type.
 
 ## Intentionally not implemented (by design, not by oversight)
 
