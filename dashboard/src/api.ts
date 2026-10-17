@@ -98,6 +98,10 @@ export async function signIn(apiKey: string): Promise<Session> {
     headers: { "X-API-Key": apiKey },
   });
   if (res.status === 401) throw new UnauthorizedError("Invalid API key.");
+  if (res.status === 429) {
+    const wait = res.headers.get("Retry-After");
+    throw new Error(`Too many failed sign-in attempts. Try again${wait ? ` in ${wait} s` : " later"}.`);
+  }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
   const body = await res.json();
   const s: Session = {
@@ -110,7 +114,22 @@ export async function signIn(apiKey: string): Promise<Session> {
   return s;
 }
 
-export const signOut = () => setSession(null);
+// Revoke the token on the server (POST /auth/logout), then forget it
+// locally. Local sign-out happens even if the server call fails.
+export async function signOut(): Promise<void> {
+  const s = current;
+  if (s) {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${s.token}` },
+      });
+    } catch {
+      // Server unreachable: the token still expires on its own.
+    }
+  }
+  setSession(null);
+}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const s = getSession();
