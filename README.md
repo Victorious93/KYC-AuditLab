@@ -74,7 +74,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
-Documented as **21/21 pass** in [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md) (against a live local instance). With API auth (`tests/test_api_auth.py`) the suite is **64 tests**; the test suite configures its own throwaway hashed keys.
+On `main` @ `bbb5129` the suite is **146 tests, all passing** (locally and in CI). With the open fix PRs #18–#22 merged together it is **371 tests, all passing in both simulator modes** (default vulnerable mode and `IDENTITYSHIELD_SIM_VULNERABLE=false`). See [`docs/TEST_RESULTS.md`](docs/TEST_RESULTS.md). The suite starts its own local uvicorn instance and configures its own throwaway hashed API keys.
 
 ## Dashboard
 
@@ -127,9 +127,10 @@ Written and reviewed; **not run end-to-end** in the environment that wrote these
 - `IDENTITYSHIELD_ALLOWED_TARGETS` (server env, not settable via API) caps hostnames.
 - Control-plane routes require an API key with the right role (`admin` / `operator`); no keys configured → fail closed.
 - Every module run needs an explicit, non-revoked `ScopeEntry` (`POST /scope`) — default-deny.
+- Targets are parsed once by a strict canonical parser, and HTTP modules build request URLs only from the parsed host/port. Userinfo, `@`, backslashes, whitespace and paths are rejected (#18). Layer 4 targets must be strict Android package names, and adb remote-shell arguments are quoted (#19).
 - Unimplemented modules report explicit errors; Layer 4 Android modules (signature, permissions, device trust, local-storage exposure, network security config) report `skipped` when no adb/device is available. Neither is ever reported as success.
 
-Layers 2/3 score bundled SYNTHETIC fixtures (match scores, liveness challenge cases) end-to-end against the simulator. See `docs/DATASETS.md` for sources and licenses. Current metrics: L2 FAR 0.03 / FRR 0.20; L3 APCER 0.333 / BPCER 0.0 (vulnerable mode).
+Layers 2/3 score bundled SYNTHETIC fixtures (match scores, liveness challenge cases) end-to-end against the simulator. See `docs/DATASETS.md` for sources and licenses. Current metrics: L2 FAR 0.03 / FRR 0.20; L3 APCER 0.333 / BPCER 0.0 / ACER 0.167 in vulnerable mode, and 0.0 / 0.0 / 0.0 in hardened mode. With #21 the hardened figure is measured against a server-issued, single-use challenge.
 
 Does **not** implement counterfeit-document generators, biometric spoofing media, presentation-attack media, or root/Play-Integrity bypass tooling (by design). See LIMITATIONS.md.
 
@@ -137,7 +138,7 @@ Does **not** implement counterfeit-document generators, biometric spoofing media
 
 ```text
 backend/             FastAPI orchestrator + KYC simulator + layer packages + pytest
-android-companion/   Kotlin companion APK + instrumentation for on-device checks (builds in CI; not yet run on a device)
+android-companion/   Kotlin companion APK + instrumentation for on-device checks (builds in CI; run on an API 34 emulator, see docs/LAYER4_EMULATOR_RUN.md)
 dashboard/           React + TypeScript SPA
 docs/                Architecture, threat model, limitations, roadmap, test results
 evidence/            Raw output dir (contents gitignored)

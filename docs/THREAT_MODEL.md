@@ -26,6 +26,8 @@ production identity-verification service.
 | Control | Where | What it stops |
 |---|---|---|
 | Hostname allowlist (`IDENTITYSHIELD_ALLOWED_TARGETS`, server-side env only) | `orchestrator/scope.py` | A test-run request naming a target outside the deployment's intended set, even if an API caller tries to widen scope |
+| One canonical target parser for the scope decision **and** request URLs (#18) | `orchestrator/scope.py` (`parse_target`, `target_url`), `TestContext.url()` | Parser-differential bypasses such as `127.0.0.2:18080\@localhost` (scope sees `localhost`, the HTTP client connects to `127.0.0.2:18080`) |
+| Strict Android package names + quoted adb shell args (#19) | `orchestrator/scope_android.py`, `layers/layer4_android/harness.py` | Shell injection on the test device via the Layer 4 target (`com.android.settings/ ;<cmd>`) |
 | Explicit `ScopeEntry` requirement (default-deny) | same | Running against a target with no recorded authorization, even if it happens to be allowlisted |
 | `capability` gate on every registered module | `orchestrator/runner.py` | Claiming a result for a module that has no real implementation (stub modules always report an explicit "not executed" error) |
 | Simulator reset between runs (`/simulator/admin/reset`) | `simulator/store.py` | State leaking between test runs producing misleading results |
@@ -48,9 +50,9 @@ operator points at their own detector/dataset.
   ported the test logic to target it, outside this framework's default
   scope) does not mean it is secure - these are representative checks for
   the classes of bugs named in the seven layers, not an exhaustive audit.
-- The Android layer's interface is defined but **not executed** in this
-  project; no Android-layer claim should be trusted without real device
-  evidence attached to the run.
+- The Android layer has been executed only on one API 34 emulator (see
+  `LAYER4_EMULATOR_RUN.md`), never on physical hardware; no Android-layer
+  claim should be trusted without real device evidence attached to the run.
 - The biometric/liveness harnesses are only as good as the dataset/detector
   supplied to them; the bundled defaults are synthetic placeholders, not
   evidence of any real system's performance.

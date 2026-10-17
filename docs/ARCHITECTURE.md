@@ -4,26 +4,40 @@
 
 ```
 backend/app/
-  main.py                 FastAPI app: mounts the simulator + orchestrator routers
-  config.py                Settings (DB URL, allowlist, local-only flag, evidence dir)
-  db.py / models.py        SQLAlchemy models: TestRun, Finding, ScopeEntry
+  main.py                 FastAPI app (lifespan: init_db + load modules); mounts the simulator +
+                           orchestrator routers; CORS allowlist for the dashboard (#22)
+  auth.py                  X-API-Key auth: SHA-256-hashed keys, admin / operator roles (non-hierarchical)
+  config.py                Settings (DB URL, allowlist, local-only flag, evidence dir, CORS origins)
+  db.py / models.py        SQLAlchemy models: TestRun, Finding, ScopeEntry; init_db() = create_all()
+                           + PostgreSQL enum-label helper (#20)
+  evidence/                redact.py (PII redaction before persist), store.py (0600 writer),
+                           retention.py (CLI: delete runs/evidence older than N days)
   orchestrator/
-    registry.py             TestModule/Capability/Layer definitions + the module registry
-    runner.py                execute_module(): scope check -> run -> persist Finding rows
-    scope.py                  assert_in_scope(): hard allowlist + explicit ScopeEntry check
+    registry.py             TestModule/Capability/Layer definitions + the module registry;
+                            TestContext carries the scoped (host, port) and builds request URLs (#18)
+    runner.py                execute_module(): stub check -> scope check -> [Layer 4 package gate]
+                             -> run -> redact -> persist TestRun/Finding rows
+    scope.py                  parse_target() (one strict canonical parser, #18) + assert_in_scope():
+                              hard allowlist + explicit ScopeEntry check
+    scope_android.py          validate_android_package() for Layer 4 targets (#19)
   simulator/
-    app.py                    The local KYC simulator (FastAPI router, mounted at /simulator)
+    app.py                    The local KYC simulator (FastAPI router, mounted at /simulator);
+                              server-issued single-use liveness challenge (#21)
     store.py                   In-memory session/audit-event store, reset between runs
     policies.py                 Configurable verification policy (thresholds, TTLs, limits)
   layers/
     layer1_document .. layer7_fraud   One package per attack layer, each registering
                                         TestModule entries against the registry on import
+    layer4_android/harness.py          adb discovery, device selection, APK install,
+                                        `am instrument`, JSON parsing; SKIPPED when unavailable
+    fixtures/                          SYNTHETIC L2/L3 CSV fixtures + simulator flow driver
   routers/
-    tests.py    GET /tests/modules, POST /tests/run, POST /tests/run-layer
-    results.py   GET /results/runs, GET /results/runs/{id}
-    scope_admin.py POST/GET/DELETE /scope
+    tests.py    GET /tests/modules, POST /tests/run, POST /tests/run-layer   (operator)
+    results.py   GET /results/runs, GET /results/runs/{id}                   (operator)
+    scope_admin.py POST/GET/DELETE /scope                                    (admin)
 dashboard/        React + TypeScript SPA: lists modules, triggers runs, shows findings
-android-companion/  Kotlin source for on-device checks (NOT built/run - see LIMITATIONS.md)
+android-companion/  Kotlin companion APK + IntegrityInstrumentation (built in CI; run on an
+                    API 34 emulator 2026-10-15 - see LAYER4_EMULATOR_RUN.md)
 docs/              This directory
 evidence/          Raw output / artifacts written by test modules (gitignored)
 ```
@@ -36,14 +50,29 @@ evidence/          Raw output / artifacts written by test modules (gitignored)
    `error` status with the limitation text and returns immediately -
    **nothing is ever claimed to have executed if it didn't.**
 4. Otherwise, `scope.assert_in_scope(db, target)` runs:
+   - Parse `target` with the strict canonical parser `parse_target()`
+     (`[http(s)://]host[:port][/]`; host = DNS name, dotted-quad or
+     `[IPv6]`). Userinfo/`@`, backslashes, whitespace/control/non-ASCII
+     characters, paths, queries, fragments and ambiguous numeric hosts are
+     rejected (#18).
    - Reject if `target`'s hostname is not in the server-side
      `IDENTITYSHIELD_ALLOWED_TARGETS` env var (default: localhost only).
    - Reject if there is no active, non-revoked `ScopeEntry` row for that
      host in the database.
-   - Both checks must pass; either can block the run (`blocked_scope`).
+   - All checks must pass; any can block the run (`blocked_scope`).
+   - For Layer 4 modules, the target must additionally be a strict Android
+     package name (`scope_android.validate_android_package`, #19).
 5. The module's `run(ctx)` executes, returns a `ModuleResult`
-   (passed/failed, summary, structured `Finding`s).
-6. The runner persists a `TestRun` row and one `Finding` row per finding.
+   (passed/failed/skipped, summary, structured `Finding`s). HTTP modules
+   build every request URL with `ctx.url(path)` from the parsed, validated
+   host/port, never from the raw target string; the built URL is re-parsed
+   with urllib3 as a backstop (#18). The Layer 4 harness passes only the
+   validated package name and `shlex`-quotes every remote-shell argument
+   (#19).
+6. The runner redacts summary/raw output/finding descriptions, then
+   persists a `TestRun` row and one `Finding` row per finding. A module
+   whose prerequisite is missing (e.g. no adb/device) is recorded as
+   `skipped`, never `passed`.
 7. The dashboard/API surfaces the result; `GET /results/runs/{id}` gives
    the full finding list with severity/CWE/remediation/risk_score.
 
@@ -69,3 +98,22 @@ registered, with `capability=Capability.STUB_NOT_IMPLEMENTED` (or
 `EVALUATION_ONLY`) and a non-empty `limitation` string - enforced by
 `TestModule.__post_init__`. This is how the registry stays an honest,
 complete map of all seven layers even where execution isn't there yet.
+
+## Simulator liveness protocol
+
+`POST /simulator/liveness/challenge` issues a per-session nonce, stores it
+server-side with a TTL (`liveness_challenge_ttl_seconds`, default 120s) and
+returns it. `POST /simulator/liveness` grades `challenge_response` only
+against the stored value and clears it on every attempt, so each challenge
+is single-use. A client-supplied `expected_challenge` is accepted for
+backward compatibility and ignored. Vulnerable mode keeps exactly one planted
+liveness flaw: it honors `client_asserts_live=true` (#21).
+
+## Network exposure
+
+`docker-compose.yml` publishes the backend (8000) and dashboard (5173) on
+`127.0.0.1` only. The backend allows cross-origin calls only from
+`IDENTITYSHIELD_CORS_ORIGINS` (default `http://localhost:5173`,
+`http://127.0.0.1:5173`; `*` refused). The dashboard's API key is still
+inlined into its JavaScript bundle by Vite, so treat any served dashboard
+as exposing that key (#22, `LIMITATIONS.md`).

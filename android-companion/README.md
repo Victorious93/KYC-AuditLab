@@ -1,9 +1,13 @@
 # IdentityShield Android Companion
 
-**Status: builds (`assembleDebug`), not yet run on a device.** The module is a
+**Status: builds (`assembleDebug`) in CI, and was run once on an emulator.** The module is a
 real Gradle project (AGP 9.3.1, Gradle 9.5.0 wrapper, compileSdk/targetSdk 36,
-minSdk 28) and CI compiles it on every push/PR. No emulator or physical device
-has executed it, so no on-device check has produced a result yet. Do not treat any Android-layer claim
+minSdk 28) and CI compiles it on every push/PR. On 2026-10-15 the backend harness
+installed it on an Android 14 / API 34 `google_apis` x86_64 emulator (KVM) and
+ran all five Layer 4 modules against `com.android.settings` and
+`com.google.android.gm`; results were cross-checked with `aapt2`/`apksigner`
+(see `../docs/LAYER4_EMULATOR_RUN.md`). **Not yet run on a physical device,
+another API level, or a rooted device.** Do not treat any Android-layer claim
 in reports produced by this project as a verified result unless it names a
 real device/emulator (`adb devices` output) and attaches command output as
 evidence.
@@ -36,13 +40,16 @@ something this general framework ships by default.
    The APK has no launcher activity yet; checks are exposed as a library class
    (`IntegrityChecks`) for an instrumentation/UI Automator harness (step 3).
 2. Attach a device or start an emulator; `adb devices` must show it.
-3. Wire the backend's `layer4_android` registry modules to shell out to
-   `adb shell am instrument ...` or a UI Automator test APK that exercises
-   `IntegrityChecks`, following the pattern in
-   `backend/app/orchestrator/runner.py`.
+3. Run the Layer 4 modules through the backend (`POST /tests/run` with the
+   target app's package name, which must be allowlisted and scoped). The
+   harness (`backend/app/layers/layer4_android/harness.py`) installs the APK
+   with `adb install -r -t` and runs `adb shell am instrument -w -e
+   target_package <pkg> com.identityshield.companion/.IntegrityInstrumentation`.
+   Optional params: `serial`, `apk_path`, `expected_signing_sha256`.
 4. Everything must still pass `orchestrator.scope.assert_in_scope()` before
-   touching a device, the same as network-facing modules.
+   touching a device, the same as network-facing modules. Layer 4 targets
+   must also be strict package names (`orchestrator/scope_android.py`, #19).
 
 ## Exposure checks
 
-`AppExposureChecks.kt` adds `localStorage` and `networkConfig` sections to the instrumentation JSON (non-root: ApplicationInfo flags, the target's binary manifest and network_security_config XML, readability probes). Compiled in CI; not yet run on a device.
+`AppExposureChecks.kt` adds `localStorage` and `networkConfig` sections to the instrumentation JSON (non-root: ApplicationInfo flags, the target's binary manifest and network_security_config XML, readability probes). Compiled in CI; run on the API 34 emulator (2026-10-15), where it correctly resolved Gmail's obfuscated NSC (`res/8GD.xml`).

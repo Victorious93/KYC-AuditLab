@@ -2,8 +2,8 @@
 
 | Source | What it is | License | In git? |
 |---|---|---|---|
-| `backend/app/layers/fixtures/layer2_match_scores.csv` | 200 SYNTHETIC face-matcher scores (100 genuine, 100 impostor; 4 scenarios incl. "look-alike" impostors). Floats only. No images or biometric data. | Project license (generated here by `backend/scripts/gen_layers23_fixtures.py`, seed 20261015) | Yes (~7 KB) |
-| `backend/app/layers/fixtures/layer3_pad_cases.csv` | 120 SYNTHETIC liveness challenge-response cases (60 genuine, 60 attacks: wrong response, stale replay, client-asserted liveness). Text tokens prefixed `SPECIMEN-`. No media. | Same as above | Yes (~8 KB) |
+| `backend/app/layers/fixtures/layer2_match_scores.csv` | 200 SYNTHETIC face-matcher scores (100 genuine, 100 impostor; 4 scenarios incl. "look-alike" impostors). Floats only. No images or biometric data. | Project license (generated here by `backend/scripts/gen_layers23_fixtures.py`, seed 20261015) | Yes (11,530 bytes) |
+| `backend/app/layers/fixtures/layer3_pad_cases.csv` | 120 SYNTHETIC liveness challenge-response cases (60 genuine, 60 attacks: wrong response, stale replay, client-asserted liveness). Text tokens prefixed `SPECIMEN-`. No media. | Same as above | Yes (9,289 bytes) |
 
 Regenerate with `cd backend && python scripts/gen_layers23_fixtures.py` (deterministic).
 
