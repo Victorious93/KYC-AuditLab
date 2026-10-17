@@ -28,7 +28,8 @@ SYNTHETIC_MALFORMED_DOCUMENTS = [
 
 
 def _sim_url(ctx: TestContext, path: str) -> str:
-    return f"http://{ctx.target}/simulator{path}"
+    # Built from the scope-validated host/port, never the raw target string.
+    return ctx.url(f"/simulator{path}")
 
 
 def _new_session(ctx: TestContext, identity_key: str):
