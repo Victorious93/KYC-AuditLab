@@ -29,7 +29,10 @@ from . import harness
 
 def _execute(ctx: TestContext) -> harness.HarnessOutcome:
     p = ctx.params or {}
-    return harness.run_integrity_checks(ctx.target, serial=p.get("serial"), apk_path=p.get("apk_path"))
+    # Only a strictly validated package name is passed on (never the raw
+    # string); the harness re-validates and shlex-quotes remote-shell args.
+    package = harness.validate_package_name(ctx.target)
+    return harness.run_integrity_checks(package, serial=p.get("serial"), apk_path=p.get("apk_path"))
 
 
 def _skip(outcome: harness.HarnessOutcome) -> ModuleResult:

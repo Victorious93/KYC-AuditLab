@@ -7,6 +7,16 @@
 
 Regenerate with `cd backend && python scripts/gen_layers23_fixtures.py` (deterministic).
 
+### How Layer 3 cases are replayed
+
+The simulator issues the liveness challenge itself (`POST /simulator/liveness/challenge`), stores it per session, grades `/liveness` only against that stored value and burns it after one attempt. The fixture's `expected_challenge`/`challenge_response` pair therefore encodes the *case*, not the wire values:
+
+- **genuine** (`challenge_response == expected_challenge`): the driver answers with the challenge the server actually issued.
+- **wrong_challenge_response / stale_challenge_replay**: the driver submits the recorded wrong or stale response **and** claims that same value as `expected_challenge` (a self-consistent forgery). The server ignores the client-supplied value, so these are rejected in both modes.
+- **client_asserts_live**: as above, plus `client_asserts_live=true`. Only vulnerable mode honors it (the planted flaw).
+
+Resulting metrics: vulnerable mode APCER 0.3333 / BPCER 0.0000 / ACER 0.1667; hardened mode APCER 0.0000 / BPCER 0.0000 / ACER 0.0000. Hardened APCER 0.0 now also covers self-consistent forgery, which the earlier client-trusted check would have accepted.
+
 ## Public datasets: none used
 
 Public face-verification and PAD datasets that we know of (LFW, CelebA-Spoof, CASIA-FASD, Replay-Attack, OULU-NPU, SiW, etc.) contain

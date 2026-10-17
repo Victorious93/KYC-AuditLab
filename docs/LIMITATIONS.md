@@ -35,8 +35,14 @@ _Last refreshed 2026-10-17 against `main` @ `bbb5129` plus the open fix PRs
   TrustManagers) and native TLS stacks are invisible, so "no pinning" is a
   low-severity observation, not proof. If manifest parsing fails the
   affected fields are reported as an info finding rather than guessed.
-  Existing Postgres databases need
-  `ALTER TYPE runstatus ADD VALUE 'skipped';` (fresh DBs via create_all are fine).
+  Existing Postgres databases created before `SKIPPED` was added need
+  `ALTER TYPE runstatus ADD VALUE IF NOT EXISTS 'SKIPPED';` (upper-case:
+  SQLAlchemy stores enum member *names*, so the labels are `'PENDING'`, ...,
+  `'SKIPPED'`). The backend now runs this automatically at startup (see
+  "Postgres enum migration" in the README); fresh DBs via create_all are fine.
+  An earlier version of this note said `ADD VALUE 'skipped'` (lower-case):
+  that label is never written by the app, so it does not fix the error. A stray
+  `'skipped'` label is harmless but cannot be dropped without recreating the type.
 
 ## Intentionally not implemented (by design, not by oversight)
 
@@ -94,8 +100,17 @@ and allowlisted hostname - see `THREAT_MODEL.md`.
   This is a deliberate, documented fixture flaw for the framework to
   detect, not a bug in
   IdentityShield itself.
-- Dashboard has no auth and talks to the backend directly - fine for local
-  use, not meant for a shared/multi-tenant deployment yet.
+- The API requires `X-API-Key` (admin/operator roles), but the dashboard
+  gets its key from `VITE_API_KEY`, which Vite inlines into the browser
+  bundle: anyone who can load the dashboard can read the key. Mitigations in
+  place: compose binds 8000 and 5173 to `127.0.0.1` only, `npm run dev`
+  listens on localhost, and the backend's CORS allowlist
+  (`IDENTITYSHIELD_CORS_ORIGINS`, default `http://localhost:5173`,
+  `http://127.0.0.1:5173`, never `*`) admits only the dashboard origin. Not
+  done: removing the key from the bundle (same-origin proxy or runtime key
+  entry) and narrower dashboard-specific keys. Local use only; not meant for
+  a shared/multi-tenant deployment. The dashboard has still not been
+  exercised against a live backend in a real browser.
 - `docker-compose.yml` has not been run end-to-end in this environment (no
   Docker daemon available here); it was written and reviewed, not executed.
   `backend/tests/` were run directly against a locally-started process via

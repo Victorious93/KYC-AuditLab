@@ -37,10 +37,14 @@ services:
       IDENTITYSHIELD_EVIDENCE_DIR: /evidence
       # Required: API keys (identity:roles:sha256hex). Unset => protected routes fail closed (503).
       IDENTITYSHIELD_API_KEYS: ${IDENTITYSHIELD_API_KEYS:-}
+      # Browser origins allowed to call the API (CORS). Explicit list, never "*".
+      IDENTITYSHIELD_CORS_ORIGINS: ${IDENTITYSHIELD_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     volumes:
       - evidence:/evidence
+    # Loopback only: the API and the (unauthenticated) /simulator endpoints
+    # must not be reachable from the LAN. Do not change to "8000:8000".
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   dashboard:
     build: ./dashboard
@@ -48,9 +52,13 @@ services:
       - backend
     environment:
       VITE_API_BASE_URL: http://localhost:8000
+      # WARNING: Vite inlines VITE_API_KEY into the JavaScript it serves, so
+      # anyone who can load the dashboard can read this key. Loopback only.
       VITE_API_KEY: ${VITE_API_KEY:-}
+    # Loopback only (the dev server inside the container listens on 0.0.0.0
+    # so Docker can forward to it; this mapping limits the HOST side).
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
 
 volumes:
   pgdata:
