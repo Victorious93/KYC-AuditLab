@@ -6,7 +6,8 @@
 backend/app/
   main.py                 FastAPI app (lifespan: init_db + load modules); mounts the simulator +
                            orchestrator routers; CORS allowlist for the dashboard (#22)
-  auth.py                  X-API-Key auth: SHA-256-hashed keys, admin / operator roles (non-hierarchical)
+  auth.py                  X-API-Key auth: SHA-256-hashed keys, admin / operator roles (non-hierarchical);
+                           short-lived HMAC session tokens (Authorization: Bearer)
   config.py                Settings (DB URL, allowlist, local-only flag, evidence dir, CORS origins)
   db.py / models.py        SQLAlchemy models: TestRun, Finding, ScopeEntry; init_db() = create_all()
                            + PostgreSQL enum-label helper (#20)
@@ -114,6 +115,19 @@ liveness flaw: it honors `client_asserts_live=true` (#21).
 `docker-compose.yml` publishes the backend (8000) and dashboard (5173) on
 `127.0.0.1` only. The backend allows cross-origin calls only from
 `IDENTITYSHIELD_CORS_ORIGINS` (default `http://localhost:5173`,
-`http://127.0.0.1:5173`; `*` refused). The dashboard's API key is still
-inlined into its JavaScript bundle by Vite, so treat any served dashboard
-as exposing that key (#22, `LIMITATIONS.md`).
+`http://127.0.0.1:5173`; `*` refused).
+
+## Dashboard authentication
+
+The dashboard bundle contains no credentials. The operator types an API key
+at runtime; the dashboard sends it once to `POST /auth/session` (in
+`X-API-Key`) and gets back a short-lived token
+`iss1.<base64url payload>.<HMAC-SHA256>` with payload `{sub, kfp, iat, exp}`.
+`kfp` is a keyed fingerprint of the issuing key, so on every request the
+token is re-bound to a key that is still configured; rotating or removing
+the key revokes its tokens, and roles come from the current key config.
+`/auth/session` accepts only an API key, never a token. The token is sent as
+`Authorization: Bearer` and kept in the tab's `sessionStorage`; any 401
+returns the dashboard to its sign-in screen. `vite.config.ts` refuses
+secret-looking `VITE_*` variables, and CI's `dashboard-build` job scans the
+built bundle for key-like content (`scripts/check-bundle-secrets.mjs`).

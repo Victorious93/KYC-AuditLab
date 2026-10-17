@@ -1,7 +1,7 @@
 FROM node:20-slim
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 EXPOSE 5173
 # Listen on all interfaces INSIDE the container so Docker can forward to it;

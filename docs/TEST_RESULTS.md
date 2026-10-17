@@ -14,6 +14,21 @@ IDENTITYSHIELD_SIM_VULNERABLE=false python -m pytest -q   # hardened mode
 
 All tests use SQLite. The suite starts its own local uvicorn instance and registers throwaway hashed API keys. Layer 4 tests use a mocked adb; no device is needed.
 
+## Dashboard: no baked API key (`fix/dashboard-no-baked-key`, 2026-10-17)
+
+Branch off `main` @ `1502028`, local Python 3.13.5 / Node 20.19.2:
+
+| Check | Result |
+|---|---|
+| `pytest -q` (vulnerable mode) | **428 passed** (371 before + 57 in new `test_auth_session.py`) |
+| `IDENTITYSHIELD_SIM_VULNERABLE=false pytest -q` (hardened) | **428 passed** |
+| `npm ci && npm run build` | builds (tsc + vite) |
+| `npm run check:bundle` on `dist/` | OK, no key-like content |
+| `VITE_API_KEY=... vite build` | refused by `vite.config.ts` (as intended) |
+| Scanner self-test | detects planted `X-API-Key` value, `VITE_API_KEY`, `identity:roles:key` entry, 64-hex digest, session token, `BUNDLE_CANARIES` value |
+| Same canary check on `main`'s dashboard built with `VITE_API_KEY` set | canary found in bundle (the original problem) |
+| Headless Chrome against a live local backend | sign-in prompt; wrong key rejected; sign-in with a dev key; 23 modules listed; scope authorized and one module run; `sessionStorage` holds only the token (never the key), `localStorage` empty; session survives reload; tampered token → 401 → back to sign-in; 60 s TTL token expired → 401 server-side and dashboard re-prompts; sign-out clears storage; `X-API-Key` sent only on `POST /auth/session` |
+
 ## `main` @ `bbb5129` (merge of #17)
 
 | Run | Result |

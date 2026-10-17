@@ -48,6 +48,39 @@ jobs:
           node-version: "20"
       - run: npm audit --audit-level=high
 
+  dashboard-build:
+    # Builds the dashboard and fails if the bundle contains anything key-like.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - name: Build (server-side key env set as a canary; it must not reach the bundle)
+        env:
+          IDENTITYSHIELD_DEV_API_KEYS: ci:admin+operator:ci-canary-dev-key-0f3a9
+        run: npm run build
+      - name: Scan bundle for key-like content
+        env:
+          BUNDLE_CANARIES: ci-canary-dev-key-0f3a9
+        run: npm run check:bundle
+      - name: Build refuses a secret-looking VITE_ variable
+        run: |
+          if VITE_API_KEY=ci-canary-vite-key npx vite build --outDir /tmp/should-not-build; then
+            echo "vite build accepted VITE_API_KEY"; exit 1
+          fi
+      - name: Scanner self-test (must detect a planted key)
+        run: |
+          mkdir -p /tmp/planted
+          echo 'fetch(u,{headers:{"X-API-Key":"planted-planted-planted"}})' > /tmp/planted/a.js
+          if node scripts/check-bundle-secrets.mjs /tmp/planted; then
+            echo "scanner missed a planted key"; exit 1
+          fi
+
   gitleaks:
     runs-on: ubuntu-latest
     steps:

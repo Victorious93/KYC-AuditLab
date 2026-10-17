@@ -45,6 +45,14 @@ export IDENTITYSHIELD_API_KEYS="alice:admin:<hash>,ci-bot:operator:<hash>"
 ```
 
 - `authorized_by` on scope entries is set from the authenticated key's identity (`alice` above). Any client-supplied `authorized_by` is ignored.
+- **Session tokens (`POST /auth/session`):** a client can exchange its API key (in `X-API-Key`) for a short-lived signed token and then send `Authorization: Bearer <token>` instead. This is how the dashboard works, so browsers never hold the long-lived key. Tokens are HMAC-SHA256-signed with `IDENTITYSHIELD_SESSION_SECRET` (≥ 32 chars; if unset, a random per-process secret is used and tokens end on restart; if too short, tokens are disabled), last `IDENTITYSHIELD_SESSION_TTL_SECONDS` (default 3600, clamped to 60–43200), and are re-checked against the **current** key config on every request: removing or rotating the key revokes its tokens at once, and roles come from the current config. A token cannot mint another token. There is no server-side sign-out; a token that leaks stays valid until it expires or its key is rotated.
+
+```bash
+curl -X POST localhost:8000/auth/session -H 'X-API-Key: devkey'
+# {"token":"iss1....","token_type":"Bearer","expires_at":"...","identity":"dev","roles":["admin","operator"]}
+curl -H "Authorization: Bearer $TOKEN" localhost:8000/tests/modules
+```
+
 - **Local dev option:** `IDENTITYSHIELD_DEV_API_KEYS` takes the same format with a *plaintext* key (e.g. `dev:admin+operator:devkey`). It is honoured **only** when `IDENTITYSHIELD_ENV=local` (the default) and ignored otherwise. Never use it in a shared deployment.
 
 See [`.env.example`](.env.example).
@@ -80,29 +88,31 @@ On `main` @ `bbb5129` the suite is **146 tests, all passing** (locally and in CI
 
 ```bash
 cd dashboard
-npm install
+npm ci
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000`, and `VITE_API_KEY` to a key with the roles you need (the dashboard uses both `admin` and `operator` routes). `npm run dev` listens on localhost only.
+Set `VITE_API_BASE_URL` if the backend is not on `localhost:8000` (the only build-time setting; it is not a secret). `npm run dev` listens on localhost only.
 
-> **Dashboard key exposure.** Vite inlines `VITE_API_KEY` into the JavaScript it serves. Anyone who can load the dashboard (or any `npm run build` output made with the key set) can read the key and use it against the API with full `admin`+`operator` rights. Treat it as local-only:
-> - use a dedicated, throwaway key for the dashboard, never a shared or long-lived one;
-> - keep the dashboard and API on loopback (the compose file now binds both to `127.0.0.1`);
-> - never deploy or share a bundle built with a real key.
->
-> Moving the key out of the bundle (a same-origin proxy that injects the header, or a key entered at runtime and held in memory) is still open; see `docs/LIMITATIONS.md`.
+**Signing in.** The dashboard contains no API key. On load it asks the operator for one; the key is sent once to `POST /auth/session` and exchanged for a short-lived session token, and the key is then discarded (it is never written to storage). The token is kept in this tab's `sessionStorage` and sent as `Authorization: Bearer`. When the token expires, is revoked, or the server restarts with a random secret, the next request gets a 401 and the dashboard returns to the sign-in screen. **Sign out** (top right) drops the token. Use a key with the roles you need: the dashboard calls both `admin` (`/scope`) and `operator` (`/tests`, `/results`) routes.
 
-The backend answers CORS only for an explicit origin allowlist, `IDENTITYSHIELD_CORS_ORIGINS` (comma-separated). It defaults to `http://localhost:5173,http://127.0.0.1:5173` and allows the `X-API-Key` and `Content-Type` headers, with no credentials. `*` is refused at startup. If you serve the dashboard from another origin, add that origin explicitly.
+**No secrets in the bundle.** `vite.config.ts` refuses to start or build if any secret-looking `VITE_*` variable (`*KEY*`, `*TOKEN*`, `*SECRET*`, `*PASSWORD*`, ...) is set, because Vite inlines `VITE_*` values into the JavaScript. `npm run check:bundle` scans `dist/` for key-like content (hard-coded `X-API-Key` values, `identity:roles:key` entries, 64-hex digests, session tokens, the documented dev keys, and any extra literal values passed in `BUNDLE_CANARIES`). CI's `dashboard-build` job runs both on every PR.
+
+```bash
+cd dashboard
+npm ci && npm run build && npm run check:bundle
+```
+
+The backend answers CORS only for an explicit origin allowlist, `IDENTITYSHIELD_CORS_ORIGINS` (comma-separated). It defaults to `http://localhost:5173,http://127.0.0.1:5173` and allows the `X-API-Key`, `Authorization` and `Content-Type` headers, with no credentials. `*` is refused at startup. If you serve the dashboard from another origin, add that origin explicitly.
 
 ## Docker Compose (Postgres)
 
 ```bash
-cp .env.example .env   # then set a strong POSTGRES_PASSWORD (and API keys)
+cp .env.example .env   # then set a strong POSTGRES_PASSWORD, API keys and IDENTITYSHIELD_SESSION_SECRET
 docker compose up --build
 ```
 
-The backend (`8000`) and dashboard (`5173`) are published on **`127.0.0.1` only**, so neither the API, the unauthenticated `/simulator` endpoints, nor the dashboard bundle (which carries `VITE_API_KEY`) is reachable from your LAN. Don't change these to `"8000:8000"` / `"5173:5173"` (all interfaces). Database credentials are read from `.env` (git-ignored) — nothing is hard-coded in `docker-compose.yml`, and compose fails fast if `POSTGRES_USER`/`POSTGRES_PASSWORD` are unset. Postgres is **not** published on the host; only the backend reaches it over the internal compose network. To inspect the DB locally, uncomment the `127.0.0.1:5432:5432` mapping in `docker-compose.yml` (loopback only). Note: if the password contains URL-special characters (`@ : / %`), URL-encode it, since it is interpolated into `DATABASE_URL`.
+The backend (`8000`) and dashboard (`5173`) are published on **`127.0.0.1` only**, so neither the API, the unauthenticated `/simulator` endpoints, nor the dashboard is reachable from your LAN. (The dashboard bundle no longer carries a key; operators sign in at runtime.) Don't change these to `"8000:8000"` / `"5173:5173"` (all interfaces). Database credentials are read from `.env` (git-ignored) — nothing is hard-coded in `docker-compose.yml`, and compose fails fast if `POSTGRES_USER`/`POSTGRES_PASSWORD` are unset. Postgres is **not** published on the host; only the backend reaches it over the internal compose network. To inspect the DB locally, uncomment the `127.0.0.1:5432:5432` mapping in `docker-compose.yml` (loopback only). Note: if the password contains URL-special characters (`@ : / %`), URL-encode it, since it is interpolated into `DATABASE_URL`.
 
 ### Postgres enum migration (existing databases)
 
@@ -125,7 +135,7 @@ Written and reviewed; **not run end-to-end** in the environment that wrote these
 ## Safety model (brief)
 
 - `IDENTITYSHIELD_ALLOWED_TARGETS` (server env, not settable via API) caps hostnames.
-- Control-plane routes require an API key with the right role (`admin` / `operator`); no keys configured → fail closed.
+- Control-plane routes require an API key (or a short-lived session token minted from one) with the right role (`admin` / `operator`); no keys configured → fail closed. No key is shipped in the dashboard bundle.
 - Every module run needs an explicit, non-revoked `ScopeEntry` (`POST /scope`) — default-deny.
 - Targets are parsed once by a strict canonical parser, and HTTP modules build request URLs only from the parsed host/port. Userinfo, `@`, backslashes, whitespace and paths are rejected (#18). Layer 4 targets must be strict Android package names, and adb remote-shell arguments are quoted (#19).
 - Unimplemented modules report explicit errors; Layer 4 Android modules (signature, permissions, device trust, local-storage exposure, network security config) report `skipped` when no adb/device is available. Neither is ever reported as success.
