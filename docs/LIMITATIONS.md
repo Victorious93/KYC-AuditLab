@@ -100,17 +100,22 @@ and allowlisted hostname - see `THREAT_MODEL.md`.
   This is a deliberate, documented fixture flaw for the framework to
   detect, not a bug in
   IdentityShield itself.
-- The API requires `X-API-Key` (admin/operator roles), but the dashboard
-  gets its key from `VITE_API_KEY`, which Vite inlines into the browser
-  bundle: anyone who can load the dashboard can read the key. Mitigations in
-  place: compose binds 8000 and 5173 to `127.0.0.1` only, `npm run dev`
-  listens on localhost, and the backend's CORS allowlist
-  (`IDENTITYSHIELD_CORS_ORIGINS`, default `http://localhost:5173`,
-  `http://127.0.0.1:5173`, never `*`) admits only the dashboard origin. Not
-  done: removing the key from the bundle (same-origin proxy or runtime key
-  entry) and narrower dashboard-specific keys. Local use only; not meant for
-  a shared/multi-tenant deployment. The dashboard has still not been
-  exercised against a live backend in a real browser.
+- The dashboard no longer has an API key in its bundle: the operator enters
+  a key at runtime, it is exchanged at `POST /auth/session` for a
+  short-lived signed token, and only the token is kept (tab
+  `sessionStorage`). Remaining limits: session tokens are stateless, so
+  there is no server-side sign-out or per-token revocation (a leaked token
+  is valid until it expires, default 1 h, or until its API key is
+  rotated/removed); there is no rate limit on `/auth/session`; the token in
+  `sessionStorage` is readable by any script running on the dashboard
+  origin (XSS would expose it, though not the long-lived key); there are no
+  narrower dashboard-specific roles. With `IDENTITYSHIELD_SESSION_SECRET`
+  unset, a random per-process secret is used, so tokens do not work across
+  several uvicorn workers or restarts. Mitigations still in place: compose
+  binds 8000 and 5173 to `127.0.0.1`, and the CORS allowlist
+  (`IDENTITYSHIELD_CORS_ORIGINS`, never `*`) admits only the dashboard
+  origin. The Droidcommand-AI controller and Android APKs do not use
+  session tokens yet.
 - `docker-compose.yml` has not been run end-to-end in this environment (no
   Docker daemon available here); it was written and reviewed, not executed.
   `backend/tests/` were run directly against a locally-started process via

@@ -37,6 +37,10 @@ services:
       IDENTITYSHIELD_EVIDENCE_DIR: /evidence
       # Required: API keys (identity:roles:sha256hex). Unset => protected routes fail closed (503).
       IDENTITYSHIELD_API_KEYS: ${IDENTITYSHIELD_API_KEYS:-}
+      # Signs the short-lived dashboard session tokens (POST /auth/session).
+      # >= 32 chars; unset => random per process (tokens end on restart).
+      IDENTITYSHIELD_SESSION_SECRET: ${IDENTITYSHIELD_SESSION_SECRET:-}
+      IDENTITYSHIELD_SESSION_TTL_SECONDS: ${IDENTITYSHIELD_SESSION_TTL_SECONDS:-3600}
       # Browser origins allowed to call the API (CORS). Explicit list, never "*".
       IDENTITYSHIELD_CORS_ORIGINS: ${IDENTITYSHIELD_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     volumes:
@@ -51,10 +55,9 @@ services:
     depends_on:
       - backend
     environment:
+      # Public setting only. No API key is passed to the dashboard: the
+      # operator signs in with a key at runtime (vite refuses VITE_*KEY vars).
       VITE_API_BASE_URL: http://localhost:8000
-      # WARNING: Vite inlines VITE_API_KEY into the JavaScript it serves, so
-      # anyone who can load the dashboard can read this key. Loopback only.
-      VITE_API_KEY: ${VITE_API_KEY:-}
     # Loopback only (the dev server inside the container listens on 0.0.0.0
     # so Docker can forward to it; this mapping limits the HOST side).
     ports:

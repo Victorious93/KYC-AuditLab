@@ -1,4 +1,6 @@
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8000";
+// Not a secret: where the backend lives. No API key is ever read from the
+// build environment; the operator enters one at runtime (see signIn).
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export interface TestModuleInfo {
   id: string;
@@ -33,30 +35,113 @@ export interface RunDetail extends RunSummary {
   }[];
 }
 
-// Local use only: Vite inlines this into the browser bundle.
-const API_KEY: string | undefined = (import.meta as any).env?.VITE_API_KEY;
-const authHeaders = (extra: Record<string, string> = {}): Record<string, string> =>
-  API_KEY ? { ...extra, "X-API-Key": API_KEY } : extra;
+// --- runtime sign-in --------------------------------------------------------
+//
+// The operator types an API key; it is sent once to POST /auth/session and
+// exchanged for a short-lived signed token. Only the token is kept (in this
+// tab's sessionStorage, cleared on sign-out, on any 401 and when the tab
+// closes). The API key itself is never stored anywhere.
 
-async function json<T>(res: Response): Promise<T> {
+export interface Session {
+  token: string;
+  expiresAt: string; // ISO 8601
+  identity: string;
+  roles: string[];
+}
+
+const STORAGE_KEY = "identityshield.session";
+
+export class UnauthorizedError extends Error {}
+
+let current: Session | null = loadSession();
+const listeners = new Set<(s: Session | null) => void>();
+
+function loadSession(): Session | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Session;
+    if (!s.token || !(Date.parse(s.expiresAt) > Date.now())) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+function setSession(s: Session | null) {
+  current = s;
+  try {
+    if (s) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    else sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // sessionStorage unavailable: keep the token in memory only.
+  }
+  listeners.forEach((l) => l(s));
+}
+
+export const getSession = (): Session | null => {
+  if (current && !(Date.parse(current.expiresAt) > Date.now())) setSession(null);
+  return current;
+};
+
+export const onSessionChange = (l: (s: Session | null) => void): (() => void) => {
+  listeners.add(l);
+  return () => listeners.delete(l);
+};
+
+export async function signIn(apiKey: string): Promise<Session> {
+  const res = await fetch(`${API_BASE}/auth/session`, {
+    method: "POST",
+    headers: { "X-API-Key": apiKey },
+  });
+  if (res.status === 401) throw new UnauthorizedError("Invalid API key.");
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+  const body = await res.json();
+  const s: Session = {
+    token: body.token,
+    expiresAt: body.expires_at,
+    identity: body.identity,
+    roles: body.roles,
+  };
+  setSession(s);
+  return s;
+}
+
+export const signOut = () => setSession(null);
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const s = getSession();
+  if (!s) throw new UnauthorizedError("Not signed in.");
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${s.token}`);
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  if (res.status === 401) {
+    // Expired, revoked or rotated: drop it and make the UI ask again.
+    setSession(null);
+    throw new UnauthorizedError("Session expired or revoked. Please sign in again.");
+  }
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
   return res.json();
 }
 
+const postJson = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
 export const api = {
-  listModules: () => fetch(`${API_BASE}/tests/modules`, { headers: authHeaders() }).then((r) => json<TestModuleInfo[]>(r)),
-  listRuns: () => fetch(`${API_BASE}/results/runs`, { headers: authHeaders() }).then((r) => json<RunSummary[]>(r)),
-  getRun: (id: string) => fetch(`${API_BASE}/results/runs/${id}`, { headers: authHeaders() }).then((r) => json<RunDetail>(r)),
+  listModules: () => request<TestModuleInfo[]>("/tests/modules"),
+  listRuns: () => request<RunSummary[]>("/results/runs"),
+  getRun: (id: string) => request<RunDetail>(`/results/runs/${encodeURIComponent(id)}`),
   runModule: (module_id: string, target: string) =>
-    fetch(`${API_BASE}/tests/run`, {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ module_id, target }),
-    }).then((r) => json<{ run_id: string; status: string; summary: string; finding_count: number }>(r)),
+    request<{ run_id: string; status: string; summary: string; finding_count: number }>(
+      "/tests/run",
+      postJson({ module_id, target }),
+    ),
   authorizeScope: (target: string, authorized_by: string) =>
-    fetch(`${API_BASE}/scope`, {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ target, authorized_by }),
-    }).then((r) => json<{ status: string; target: string }>(r)),
+    request<{ status: string; target: string }>("/scope", postJson({ target, authorized_by })),
 };
