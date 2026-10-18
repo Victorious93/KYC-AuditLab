@@ -53,3 +53,13 @@ something this general framework ships by default.
 ## Exposure checks
 
 `AppExposureChecks.kt` adds `localStorage` and `networkConfig` sections to the instrumentation JSON (non-root: ApplicationInfo flags, the target's binary manifest and network_security_config XML, readability probes). Compiled in CI; run on the API 34 emulator (2026-10-15), where it correctly resolved Gmail's obfuscated NSC (`res/8GD.xml`).
+
+## API access
+
+The companion **does not call the IdentityShield API**: it has no `INTERNET`
+permission and no HTTP client. The backend harness drives it over adb and
+parses its instrumentation output, so no API key or session token is ever on
+the device. Never add a key to `BuildConfig`, resources or assets. If a future
+feature needs API access from the device, follow "Future APK clients" in
+`../docs/CONTROLLER_INTEGRATION.md` (host passes a short-lived token at
+runtime; token kept in memory only).

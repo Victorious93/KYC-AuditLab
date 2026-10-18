@@ -15,7 +15,7 @@ _Last refreshed 2026-10-17 against `main` @ `bbb5129` plus the open fix PRs #18-
 
 1. **Merge and verify #18–#22**, then re-run the full module set in both simulator modes and update `TEST_RESULTS.md`.
 2. **Alembic + a Postgres CI job.** Add a baseline migration and a `postgres:16` service-container job that runs the suite. Today SQLite hides enum and type issues.
-3. **Dashboard follow-ups.** Serve a static build in Docker instead of the dev server. Move the Droidcommand-AI controller and Android APK clients to session tokens. Consider a rate limit on `/auth/session`, a server-side token denylist for sign-out, and narrower dashboard roles.
+3. **Dashboard follow-ups.** Serve a static build in Docker instead of the dev server. Have Droidcommand-AI adopt the token client / contract in `docs/CONTROLLER_INTEGRATION.md` (the reference client `backend/app/client/` exists; the APK does not call the API). Rate limit on `/auth/session` and server-side sign-out are done (#25); still open: a shared (Redis/DB) denylist and limiter, and narrower dashboard roles.
 4. **Typed per-module params** with paths confined to a data directory (`scores_csv_path`, `cases_csv_path`, `apk_path`).
 5. **Container hardening.** Run as a non-root `USER`, drop the baked default `DATABASE_URL`, and set `IDENTITYSHIELD_ENV` and `IDENTITYSHIELD_SIM_VULNERABLE` explicitly in compose.
 6. **Stand up the Docker Compose stack for real** and confirm that `IDENTITYSHIELD_ALLOWED_TARGETS=backend` resolves for container-to-container calls.
