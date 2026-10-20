@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/logo.png" alt="KYC-AuditLab logo" width="200">
+</p>
+
+<p align="center">
   <img src="docs/logo-512.png" alt="IdentityShield logo" width="200">
 </p>
 
