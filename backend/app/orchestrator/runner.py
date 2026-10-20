@@ -7,10 +7,12 @@ import traceback
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..evidence.redact import redact
 from ..models import Finding as FindingModel
 from ..models import RunStatus, TestRun
-from .registry import Capability, TestContext, registry
+from .registry import Capability, Layer, TestContext, registry
 from .scope import ScopeViolation, assert_in_scope
+from .scope_android import validate_android_package
 
 settings = get_settings()
 
@@ -39,7 +41,7 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
         return run
 
     try:
-        assert_in_scope(db, target)
+        scoped = assert_in_scope(db, target)
     except ScopeViolation as exc:
         run.status = RunStatus.BLOCKED_SCOPE
         run.summary = str(exc)
@@ -47,20 +49,35 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
         db.commit()
         return run
 
+    # Layer 4 targets go to `adb shell` on a device: require a strict Android
+    # package name on top of the host allowlist + ScopeEntry above.
+    if module.layer == Layer.ANDROID:
+        try:
+            validate_android_package(target)
+        except ScopeViolation as exc:
+            run.status = RunStatus.BLOCKED_SCOPE
+            run.summary = str(exc)
+            run.finished_at = dt.datetime.utcnow()
+            db.commit()
+            return run
+
     os.makedirs(settings.evidence_dir, exist_ok=True)
-    ctx = TestContext(target=target, db=db, evidence_dir=settings.evidence_dir, params=params or {})
+    ctx = TestContext(target=target, db=db, evidence_dir=settings.evidence_dir, params=params or {}, scoped=scoped)
 
     try:
         result = module.run(ctx)  # type: ignore[misc]
-        run.status = RunStatus.PASSED if result.passed else RunStatus.FAILED
-        run.summary = result.summary
-        run.raw_output = result.raw_output
+        if result.skipped:
+            run.status = RunStatus.SKIPPED
+        else:
+            run.status = RunStatus.PASSED if result.passed else RunStatus.FAILED
+        run.summary = redact(result.summary)
+        run.raw_output = redact(result.raw_output)
         for f in result.findings:
             db.add(
                 FindingModel(
                     run_id=run.id,
                     title=f.title,
-                    description=f.description,
+                    description=redact(f.description),
                     severity=f.severity,
                     cwe=f.cwe,
                     remediation=f.remediation,
@@ -70,7 +87,7 @@ def execute_module(db: Session, module_id: str, target: str, params: dict | None
     except Exception:  # noqa: BLE001 - we want every module error captured, not crash the API
         run.status = RunStatus.ERROR
         run.summary = "Module raised an unhandled exception."
-        run.raw_output = traceback.format_exc()
+        run.raw_output = redact(traceback.format_exc())
 
     run.finished_at = dt.datetime.utcnow()
     db.commit()

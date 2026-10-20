@@ -15,6 +15,26 @@ from typing import List
 from pydantic_settings import BaseSettings
 
 
+DEFAULT_CORS_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
+
+def parse_cors_origins(raw: str) -> List[str]:
+    """Comma-separated explicit origins (scheme://host[:port]). A wildcard is
+    rejected: the API takes an X-API-Key header and must never be callable
+    from arbitrary web pages."""
+    origins = []
+    for item in (raw or "").split(","):
+        o = item.strip().rstrip("/")
+        if not o:
+            continue
+        if "*" in o:
+            raise ValueError("IDENTITYSHIELD_CORS_ORIGINS must list explicit origins; '*' is not allowed.")
+        if not (o.startswith("http://") or o.startswith("https://")) or "/" in o.split("://", 1)[1]:
+            raise ValueError(f"Invalid CORS origin {o!r}: expected scheme://host[:port]")
+        origins.append(o)
+    return origins
+
+
 class Settings(BaseSettings):
     app_name: str = "IdentityShield"
     environment: str = os.getenv("IDENTITYSHIELD_ENV", "local")
@@ -41,6 +61,17 @@ class Settings(BaseSettings):
     enforce_local_only: bool = os.getenv("IDENTITYSHIELD_LOCAL_ONLY", "true").lower() == "true"
 
     evidence_dir: str = os.getenv("IDENTITYSHIELD_EVIDENCE_DIR", "./evidence")
+
+    # Days to keep test runs/findings/evidence before
+    # `python -m app.evidence.retention` deletes them. See docs/EVIDENCE_POLICY.md.
+    retention_days: int = int(os.getenv("IDENTITYSHIELD_RETENTION_DAYS", "30"))
+
+    # Browser origins allowed to call the API cross-origin (the dashboard dev
+    # server). Explicit allowlist from IDENTITYSHIELD_CORS_ORIGINS
+    # (comma-separated); "*" is refused. Empty string disables CORS.
+    cors_origins: List[str] = parse_cors_origins(
+        os.getenv("IDENTITYSHIELD_CORS_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS))
+    )
 
     simulator_base_url: str = os.getenv(
         "IDENTITYSHIELD_SIMULATOR_URL", "http://localhost:8000/simulator"

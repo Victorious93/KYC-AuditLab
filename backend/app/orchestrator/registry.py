@@ -17,9 +17,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .scope import ParsedTarget
 
 
 class Layer(str, Enum):
@@ -58,6 +61,9 @@ class ModuleResult:
     summary: str
     findings: List[Finding] = field(default_factory=list)
     raw_output: Optional[str] = None
+    # True when a prerequisite (adb, device, APK, expected value) was missing and
+    # nothing was tested. The runner records SKIPPED - never PASSED.
+    skipped: bool = False
 
 
 @dataclass
@@ -66,6 +72,17 @@ class TestContext:
     db: Session
     evidence_dir: str
     params: Dict = field(default_factory=dict)
+    # Canonical (host, port) returned by assert_in_scope(). HTTP modules
+    # MUST build request URLs via `ctx.url()`, never from the raw `target`.
+    scoped: Optional["ParsedTarget"] = None
+
+    def url(self, path: str = "") -> str:
+        """Request URL built from the scope-validated host/port (see
+        orchestrator.scope.parse_target)."""
+        from .scope import parse_target
+
+        parsed = self.scoped or parse_target(self.target)
+        return parsed.url(path)
 
 
 @dataclass

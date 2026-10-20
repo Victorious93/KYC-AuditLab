@@ -77,18 +77,45 @@ def estimate_eer(samples: List[ScoreSample], steps: int = 200) -> Tuple[float, f
     return best
 
 
+def simulator_far_frr(target: str, samples: List[ScoreSample]) -> Tuple[float, float]:
+    """End-to-end FAR/FRR as decided by the target (simulator): each pair's
+    score is submitted via /face with a valid synthetic document and a
+    correct liveness response, so the final decision depends on the face
+    step only. FAR = impostors approved, FRR = genuines rejected."""
+    from ..fixtures import simulator_flow
+
+    fa = fr = n_imp = n_gen = 0
+    for i, s in enumerate(samples):
+        out = simulator_flow(target, f"l2-pair-{i}", s.score, "SPECIMEN-OK", "SPECIMEN-OK")
+        approved = out["decision"] == "approved"
+        if s.genuine:
+            n_gen += 1
+            fr += not approved
+        else:
+            n_imp += 1
+            fa += approved
+    return (fa / n_imp if n_imp else 0.0), (fr / n_gen if n_gen else 0.0)
+
+
 def run_benchmark(ctx: TestContext) -> ModuleResult:
+    from ..fixtures import LAYER2_SCORES_CSV
+
     scores_csv_path = ctx.params.get("scores_csv_path")
     using_synthetic = scores_csv_path is None
-    samples = _load_scores_csv(scores_csv_path) if scores_csv_path else _bundled_synthetic_scores()
+    samples = _load_scores_csv(scores_csv_path or str(LAYER2_SCORES_CSV))
 
     policy_threshold = float(ctx.params.get("threshold", 0.80))
-    far, frr = compute_far_frr(samples, policy_threshold)
+    if ctx.params.get("offline"):
+        far, frr = compute_far_frr(samples, policy_threshold)
+        mode = f"offline at threshold={policy_threshold:.2f}"
+    else:
+        far, frr = simulator_far_frr(ctx.scoped or ctx.target, samples)
+        mode = "end-to-end via target /face+/decision"
     eer, eer_threshold = estimate_eer(samples)
 
     summary = (
-        f"{'SYNTHETIC placeholder' if using_synthetic else 'provided'} dataset, n={len(samples)}. "
-        f"At threshold={policy_threshold:.2f}: FAR={far:.4f}, FRR={frr:.4f}. "
+        f"{'SYNTHETIC fixture (layer2_match_scores.csv)' if using_synthetic else 'provided'} dataset, n={len(samples)}. "
+        f"{mode}: FAR={far:.4f}, FRR={frr:.4f}. "
         f"Estimated EER={eer:.4f} at threshold={eer_threshold:.2f}."
     )
 
@@ -99,8 +126,8 @@ def run_benchmark(ctx: TestContext) -> ModuleResult:
                 title="Biometric benchmark ran against synthetic placeholder data, not a real dataset",
                 description=(
                     "No consented/approved biometric dataset was supplied via "
-                    "params['scores_csv_path']. Results above are computed on a synthetic "
-                    "score distribution and do NOT represent this matcher's real-world "
+                    "params['scores_csv_path']. The target's decisions are real, but the "
+                    "input scores are a synthetic distribution and do NOT represent this matcher's real-world "
                     "FAR/FRR. Supply a real dataset to get meaningful numbers."
                 ),
                 severity="info",
@@ -129,7 +156,7 @@ registry.register(
         title="FAR/FRR benchmark at policy threshold",
         description=(
             "Computes False Acceptance/Rejection Rate and estimated EER from a score "
-            "distribution. Uses a bundled synthetic placeholder dataset unless a real, "
+            "distribution, scored end-to-end against the target. Uses a bundled synthetic fixture unless a real, "
             "approved dataset CSV is supplied via params['scores_csv_path']."
         ),
         capability=Capability.EVALUATION_ONLY,

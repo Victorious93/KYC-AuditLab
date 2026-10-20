@@ -4,15 +4,19 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: identityshield
-      POSTGRES_PASSWORD: identityshield
-      POSTGRES_DB: identityshield
-    ports:
-      - "5432:5432"
+      # Credentials come from .env (see .env.example); compose refuses to start without them.
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-identityshield}
+    # Postgres is NOT published on the host: the backend reaches it on the
+    # internal compose network as db:5432. For local debugging only, uncomment
+    # to expose it on loopback (never 0.0.0.0):
+    # ports:
+    #   - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U identityshield"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -27,23 +31,37 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://identityshield:identityshield@db:5432/identityshield
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-identityshield}
       IDENTITYSHIELD_ALLOWED_TARGETS: backend,localhost,127.0.0.1
       IDENTITYSHIELD_LOCAL_ONLY: "true"
       IDENTITYSHIELD_EVIDENCE_DIR: /evidence
+      # Required: API keys (identity:roles:sha256hex). Unset => protected routes fail closed (503).
+      IDENTITYSHIELD_API_KEYS: ${IDENTITYSHIELD_API_KEYS:-}
+      # Signs the short-lived dashboard session tokens (POST /auth/session).
+      # >= 32 chars; unset => random per process (tokens end on restart).
+      IDENTITYSHIELD_SESSION_SECRET: ${IDENTITYSHIELD_SESSION_SECRET:-}
+      IDENTITYSHIELD_SESSION_TTL_SECONDS: ${IDENTITYSHIELD_SESSION_TTL_SECONDS:-3600}
+      # Browser origins allowed to call the API (CORS). Explicit list, never "*".
+      IDENTITYSHIELD_CORS_ORIGINS: ${IDENTITYSHIELD_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     volumes:
       - evidence:/evidence
+    # Loopback only: the API and the (unauthenticated) /simulator endpoints
+    # must not be reachable from the LAN. Do not change to "8000:8000".
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   dashboard:
     build: ./dashboard
     depends_on:
       - backend
     environment:
+      # Public setting only. No API key is passed to the dashboard: the
+      # operator signs in with a key at runtime (vite refuses VITE_*KEY vars).
       VITE_API_BASE_URL: http://localhost:8000
+    # Loopback only (the dev server inside the container listens on 0.0.0.0
+    # so Docker can forward to it; this mapping limits the HOST side).
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
 
 volumes:
   pgdata:

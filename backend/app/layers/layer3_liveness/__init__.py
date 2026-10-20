@@ -14,6 +14,7 @@ output, or a callable implementing PADDetector) from an approved source.
 """
 from __future__ import annotations
 
+import csv
 import random
 from dataclasses import dataclass
 from typing import Callable, List, Optional
@@ -60,19 +61,52 @@ def evaluate_detector(cases: List[PADCase], detector: PADDetector) -> dict:
     return {"apcer": apcer, "bpcer": bpcer, "acer": acer, "n_attacks": len(attacks), "n_genuine": len(genuine)}
 
 
+def load_challenge_cases(path: str) -> List[dict]:
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def simulator_detector(target: str) -> Callable[[dict], bool]:
+    """Wraps the target's /liveness endpoint as a PAD decision function."""
+    from ..fixtures import simulator_flow
+
+    def detect(row: dict) -> bool:
+        flag = row.get("client_asserts_live", "").strip().lower() == "true"
+        out = simulator_flow(target, f"l3-{row['case_id']}", 0.95, row["expected_challenge"],
+                             row["challenge_response"], True if flag else None)
+        return out["liveness_passed"]
+
+    return detect
+
+
 def run_pad_evaluation(ctx: TestContext) -> ModuleResult:
+    from ..fixtures import LAYER3_PAD_CSV
+
     detector: Optional[PADDetector] = ctx.params.get("detector")
     cases_override: Optional[List[PADCase]] = ctx.params.get("cases")
     using_synthetic = cases_override is None
+    per_type = {}
 
-    cases = cases_override or _bundled_synthetic_cases()
-    detector = detector or default_detector
-
-    metrics = evaluate_detector(cases, detector)
+    if cases_override is not None:
+        metrics = evaluate_detector(cases_override, detector or default_detector)
+        label = "provided"
+    else:
+        rows = load_challenge_cases(ctx.params.get("cases_csv_path") or str(LAYER3_PAD_CSV))
+        det = detector or simulator_detector(ctx.scoped or ctx.target)
+        verdicts = {r["case_id"]: det(r) for r in rows}
+        cases = [PADCase(r["case_id"], r["is_attack"] == "1", 1.0 if verdicts[r["case_id"]] else 0.0) for r in rows]
+        metrics = evaluate_detector(cases, lambda c: verdicts[c.case_id])
+        for r in rows:
+            t = per_type.setdefault(r["attack_type"], [0, 0])
+            t[0] += 1
+            t[1] += verdicts[r["case_id"]]
+        metrics["accepted_as_live_by_type"] = {k: f"{v[1]}/{v[0]}" for k, v in per_type.items()}
+        label = "SYNTHETIC challenge-replay fixture (layer3_pad_cases.csv), scored by target /liveness"
     summary = (
-        f"{'SYNTHETIC metadata-only placeholder' if using_synthetic else 'provided'} dataset, "
+        f"{label}, "
         f"n_attacks={metrics['n_attacks']}, n_genuine={metrics['n_genuine']}. "
         f"APCER={metrics['apcer']:.4f}, BPCER={metrics['bpcer']:.4f}, ACER={metrics['acer']:.4f}."
+        + (f" Accepted-as-live by type: {metrics['accepted_as_live_by_type']}." if per_type else "")
     )
 
     findings = []
@@ -81,9 +115,10 @@ def run_pad_evaluation(ctx: TestContext) -> ModuleResult:
             Finding(
                 title="PAD evaluation ran against synthetic placeholder metadata, not real attack data",
                 description=(
-                    "No real PAD dataset or real detector was supplied. Results use the "
-                    "reference mock detector against synthetic confidence values and do not "
-                    "reflect a real liveness system's performance."
+                    "No real PAD dataset (attack media) was supplied. Results are the target's "
+                    "real decisions on synthetic challenge-response protocol cases (replays, "
+                    "wrong responses, client-asserted liveness); they measure the liveness "
+                    "protocol, not an image-based PAD model."
                 ),
                 severity="info",
                 remediation="Supply params['cases'] (real labeled dataset) and params['detector'] (your real PAD decision function).",
@@ -111,8 +146,8 @@ registry.register(
         title="PAD evaluation (APCER/BPCER/ACER)",
         description=(
             "Evaluates a presentation-attack-detection decision function against a labeled "
-            "dataset and reports APCER/BPCER/ACER. Uses synthetic placeholder metadata and a "
-            "reference mock detector unless a real dataset/detector is supplied via params."
+            "dataset and reports APCER/BPCER/ACER. By default replays a synthetic challenge-response "
+            "fixture against the target's /liveness endpoint unless a real dataset/detector is supplied via params."
         ),
         capability=Capability.EVALUATION_ONLY,
         run=run_pad_evaluation,

@@ -18,6 +18,7 @@ class SimulatorPolicy:
     reject_malformed_documents: bool = True
     min_face_match_score: float = 0.80  # [0,1], threshold for "verified"
     rate_limit_per_minute: int = 30
+    liveness_challenge_ttl_seconds: int = 120  # server-issued, single-use nonce lifetime
 
 
 DEFAULT_POLICY = SimulatorPolicy()

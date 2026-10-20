@@ -1,5 +1,17 @@
-import { useEffect, useState } from "react";
-import { api, RunDetail, RunSummary, TestModuleInfo } from "./api";
+import { FormEvent, useEffect, useState } from "react";
+import { Help } from "./Help";
+import {
+  api,
+  getSession,
+  onSessionChange,
+  RunDetail,
+  RunSummary,
+  Session,
+  signIn,
+  signOut,
+  TestModuleInfo,
+  UnauthorizedError,
+} from "./api";
 
 const CAPABILITY_LABEL: Record<string, string> = {
   implemented: "Implemented",
@@ -8,17 +20,108 @@ const CAPABILITY_LABEL: Record<string, string> = {
 };
 
 export function App() {
+  const [session, setSession] = useState<Session | null>(getSession());
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(
+    () =>
+      onSessionChange((s) => {
+        // Any 401 or expiry clears the session; tell the operator why.
+        if (!s) setNotice((n) => n ?? "Session expired or revoked. Please sign in again.");
+        setSession(s);
+      }),
+    [],
+  );
+
+  // Minimal hash route: #/help shows the Help page (available signed in or not).
+  const [route, setRoute] = useState(window.location.hash);
+  useEffect(() => {
+    const onHash = () => setRoute(window.location.hash);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  if (route === "#/help") return <Help onBack={() => (window.location.hash = "")} />;
+
+  if (!session) return <SignIn notice={notice} onSignedIn={() => setNotice(null)} />;
+  return (
+    <Dashboard
+      session={session}
+      onSignOut={() => {
+        setNotice("Signed out.");
+        void signOut();
+      }}
+    />
+  );
+}
+
+function SignIn({ notice, onSignedIn }: { notice: string | null; onSignedIn: () => void }) {
+  const [apiKey, setApiKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      onSignedIn();
+      await signIn(apiKey);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApiKey(""); // never keep the key around in component state
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 480, margin: "64px auto", padding: 24 }}>
+      <h1>IdentityShield</h1>
+      <p style={{ color: "#555" }}>
+        Enter your API key. It is exchanged once for a short-lived session token; only the token is kept,
+        and only for this browser tab.
+      </p>
+      {notice && <div style={{ background: "#ffd", border: "1px solid #cc0", padding: 8, marginBottom: 12 }}>{notice}</div>}
+      {error && <div style={{ background: "#fee", border: "1px solid #c00", padding: 8, marginBottom: 12 }}>{error}</div>}
+      <form onSubmit={submit} style={{ display: "flex", gap: 8 }}>
+        <input
+          type="password"
+          aria-label="API key"
+          placeholder="API key"
+          autoComplete="off"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          style={{ flex: 1 }}
+          autoFocus
+        />
+        <button type="submit" disabled={busy || !apiKey}>
+          {busy ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
+      <p style={{ fontSize: 13 }}>
+        <a href="#/help">Help</a>
+      </p>
+    </div>
+  );
+}
+
+function Dashboard({ session, onSignOut }: { session: Session; onSignOut: () => void }) {
   const [modules, setModules] = useState<TestModuleInfo[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [target, setTarget] = useState("backend:8000");
   const [authorizedBy, setAuthorizedBy] = useState("");
   const [selectedRun, setSelectedRun] = useState<RunDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  // A 401 already sends the operator back to the sign-in screen.
+  const setError = (e: unknown) => {
+    if (e === null) setErrorState(null);
+    else if (!(e instanceof UnauthorizedError)) setErrorState(String(e));
+  };
 
-  const refreshRuns = () => api.listRuns().then(setRuns).catch((e) => setError(String(e)));
+  const refreshRuns = () => api.listRuns().then(setRuns).catch(setError);
 
   useEffect(() => {
-    api.listModules().then(setModules).catch((e) => setError(String(e)));
+    api.listModules().then(setModules).catch(setError);
     refreshRuns();
   }, []);
 
@@ -28,7 +131,7 @@ export function App() {
       await api.runModule(moduleId, target);
       await refreshRuns();
     } catch (e) {
-      setError(String(e));
+      setError(e);
     }
   };
 
@@ -37,7 +140,7 @@ export function App() {
     try {
       await api.authorizeScope(target.split(":")[0], authorizedBy || "dashboard-operator");
     } catch (e) {
-      setError(String(e));
+      setError(e);
     }
   };
 
@@ -45,7 +148,7 @@ export function App() {
     try {
       setSelectedRun(await api.getRun(id));
     } catch (e) {
-      setError(String(e));
+      setError(e);
     }
   };
 
@@ -56,7 +159,14 @@ export function App() {
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <h1>IdentityShield</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>IdentityShield</h1>
+        <div style={{ fontSize: 13, color: "#555" }}>
+          Signed in as <strong>{session.identity}</strong> ({session.roles.join(", ")}), until{" "}
+          {new Date(session.expiresAt).toLocaleTimeString()}{" "}
+          <a href="#/help">Help</a> <button onClick={onSignOut}>Sign out</button>
+        </div>
+      </div>
       <p style={{ color: "#555" }}>
         Local-first KYC security assessment framework. Targets the bundled simulator only, by design.
       </p>

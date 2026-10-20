@@ -1,18 +1,48 @@
-# Known Limitations (Phase 1)
+# Known Limitations
 
 This file is the single source of truth for what is and isn't real in this
 project right now. Update it in the same commit as any capability change.
 
-## Not implemented at all
+_Last refreshed 2026-10-17 against `main` @ `bbb5129` plus the open fix PRs
+#18-#22 (marked below where a statement depends on one of them)._
 
-- **Layer 4 (Android)** - all 5 registered modules are
-  `STUB_NOT_IMPLEMENTED`. No Android device, emulator, or ADB connection
-  exists in this development environment, so nothing was executed. The
-  Kotlin companion (`android-companion/`) has real source for signature
-  digest / permission audit / device-trust-signal checks, but it has
-  **not been built or run**. Wiring it to the orchestrator requires
-  shelling out to `adb` from `runner.py`, following the same
-  `assert_in_scope()` gating pattern used for network modules.
+## Implemented, with significant limits
+
+- **Layer 4 (Android)** - all five modules (signature, permission-audit,
+  device-trust, local-storage, network-security-config) are implemented and
+  wired to an adb harness (`layer4_android/harness.py`) that installs the
+  companion APK and runs `IntegrityInstrumentation` via `am instrument`.
+  When adb, an authorized device, or the built APK is missing they record
+  **SKIPPED** ("skipped: no device ..."), never PASSED. The suite tests the
+  harness against a mocked adb; CI builds the companion (`assembleDebug`)
+  but runs no device. All five modules **have been run once on a real
+  Android 14 / API 34 `google_apis` x86_64 emulator** (KVM, 2026-10-15)
+  against `com.android.settings` and `com.google.android.gm`, cross-checked
+  with `aapt2`/`apksigner` - see `LAYER4_EMULATOR_RUN.md`. That run has not
+  been repeated since. **Not run on:** physical devices, other API levels
+  (<=33, 35+), rooted devices. Layer 4 targets must be strict Android
+  package names (`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$`);
+  anything else is `blocked_scope` before adb is touched, and remote-shell
+  arguments are `shlex`-quoted (#19).
+  Local-storage limits (non-root): app-private files are NOT pulled or
+  content-scanned; the check only reports flags (allowBackup, debuggable,
+  requestLegacyExternalStorage, usesCleartextTraffic, fullBackupContent /
+  dataExtractionRules presence, external-storage permissions) and whether an
+  unrelated app can list/read the target's data, shared_prefs, files and
+  external Android/data dirs. Backup/extraction rule *contents* are not
+  evaluated, only their presence. Network-config limits: only the declared
+  XML config is parsed; runtime pinning (OkHttp CertificatePinner, custom
+  TrustManagers) and native TLS stacks are invisible, so "no pinning" is a
+  low-severity observation, not proof. If manifest parsing fails the
+  affected fields are reported as an info finding rather than guessed.
+  Existing Postgres databases created before `SKIPPED` was added need
+  `ALTER TYPE runstatus ADD VALUE IF NOT EXISTS 'SKIPPED';` (upper-case:
+  SQLAlchemy stores enum member *names*, so the labels are `'PENDING'`, ...,
+  `'SKIPPED'`). The backend now runs this automatically at startup (see
+  "Postgres enum migration" in the README); fresh DBs via create_all are fine.
+  An earlier version of this note said `ADD VALUE 'skipped'` (lower-case):
+  that label is never written by the app, so it does not fix the error. A stray
+  `'skipped'` label is harmless but cannot be dropped without recreating the type.
 
 ## Intentionally not implemented (by design, not by oversight)
 
@@ -21,15 +51,28 @@ project right now. Update it in the same commit as any capability change.
   expired dates, wrong type), never anything resembling a forged
   credential.
 - **Biometric impersonation/spoofing generators** (Layer 2) - not built.
-  The FAR/FRR/EER computation engine is real and tested; it runs against a
-  bundled synthetic placeholder score distribution by default, or a real
-  dataset supplied via `params["scores_csv_path"]`.
+  The FAR/FRR/EER engine is real and tested. By default it pushes each
+  score in the SYNTHETIC fixture `layer2_match_scores.csv` through the
+  simulator's full flow (/face -> /decision) and computes FAR/FRR from the
+  simulator's real decisions (FAR=0.0300, FRR=0.2000, offline EER~0.09 at
+  0.73). The scores themselves are synthetic. No real matcher or face data
+  is involved, so these numbers describe the simulator's 0.80 threshold
+  policy, not any real face matcher. See docs/DATASETS.md.
 - **Presentation-attack media generation** (Layer 3) - not built. The
-  APCER/BPCER/ACER evaluation engine is real and tested; it runs against
-  bundled synthetic placeholder metadata (numeric mock confidence values,
-  no imagery) unless a real dataset/detector is supplied.
+  APCER/BPCER/ACER engine is real and tested. By default it replays the
+  SYNTHETIC challenge-response fixture `layer3_pad_cases.csv` against the
+  simulator's /liveness endpoint. Vulnerable mode: APCER=0.3333,
+  BPCER=0.0000, ACER=0.1667, because all 20 `client_asserts_live` attacks
+  get through. Hardened mode: APCER=0.0000, BPCER=0.0000, ACER=0.0000.
+  With #21 the simulator issues, stores and burns a single-use challenge
+  per session, and the attack cases also send a self-consistent forged
+  `expected_challenge`, so the hardened 0.0 now covers that forgery.
+  Without #21 the hardened check compared two client-supplied values and
+  its 0.0 only showed the fixture's attackers played fair. This evaluates
+  the liveness *protocol*, not an image-based PAD model. No attack media
+  or public PAD dataset is used.
 - **Root/Play-Integrity/certificate-pinning bypass tooling** (Layer 4) -
-  not built, even once Layer 4 device execution exists. The
+  not built, even though Layer 4 device execution now exists. The
   `deviceTrustSignals()` function in the Kotlin companion reads the *test
   device's own* state so you can confirm a target app's detection reacts
   correctly to a known rooted/emulated device - it does not hide that
@@ -50,16 +93,59 @@ and allowlisted hostname - see `THREAT_MODEL.md`.
   session id is rejected, but does **not** exercise real TTL-expiry timing
   (the default policy TTL is 300s, too long for a fast unit test). A
   real expiry-timing test needs a short-TTL integration run, not yet added.
-- The rate-limiter is intentionally left keyed per-identity in the
-  simulator's default ("vulnerable") mode, and `api.rate_limit.
-  identity_rotation_bypass` demonstrates that this is bypassable by
-  rotating the client-supplied identity value - this is a deliberate,
-  documented fixture flaw for the framework to detect, not a bug in
+- The simulator's rate-limiter is keyed per client-supplied identity in
+  **both** modes (vulnerable and hardened; there is no hardened per-client
+  or global limiter yet), so `api.rate_limit.identity_rotation_bypass`
+  fails in both: rotating `identity_key` on every request bypasses it.
+  This is a deliberate, documented fixture flaw for the framework to
+  detect, not a bug in
   IdentityShield itself.
-- Dashboard has no auth and talks to the backend directly - fine for local
-  use, not meant for a shared/multi-tenant deployment yet.
+- The dashboard no longer has an API key in its bundle: the operator enters
+  a key at runtime, it is exchanged at `POST /auth/session` for a
+  short-lived signed token, and only the token is kept (tab
+  `sessionStorage`). Remaining limits: sign-out revocation (`POST /auth/logout`,
+  `jti` denylist) and the `/auth/session` failed-attempt rate limit are
+  **in-memory and per process**: they reset on restart, are not shared
+  between uvicorn workers or replicas (a token revoked on one worker still
+  works on another; an attacker gets the limit once per worker), and a
+  leaked token that nobody signs out is valid until it expires (default
+  1 h) or its key is rotated. The limiter keys on the direct peer IP, so
+  behind a reverse proxy all clients share one bucket (`X-Forwarded-For`
+  is deliberately not trusted), and an attacker can lock a shared IP out
+  for one window. The token in
+  `sessionStorage` is readable by any script running on the dashboard
+  origin (XSS would expose it, though not the long-lived key); there are no
+  narrower dashboard-specific roles. With `IDENTITYSHIELD_SESSION_SECRET`
+  unset, a random per-process secret is used, so tokens do not work across
+  several uvicorn workers or restarts (the server logs a startup warning
+  when this happens outside `IDENTITYSHIELD_ENV=local`). Mitigations still in place: compose
+  binds 8000 and 5173 to `127.0.0.1`, and the CORS allowlist
+  (`IDENTITYSHIELD_CORS_ORIGINS`, never `*`) admits only the dashboard
+  origin. Non-dashboard clients: `backend/app/client/` is a reference
+  token client + CLI for controllers such as Droidcommand-AI (contract in
+  `docs/CONTROLLER_INTEGRATION.md`); Droidcommand-AI itself lives outside
+  this repo and its adoption is not verified here. The Android companion
+  APK does not call the API at all (results go through `adb am
+  instrument`), so it holds neither keys nor tokens.
 - `docker-compose.yml` has not been run end-to-end in this environment (no
   Docker daemon available here); it was written and reviewed, not executed.
   `backend/tests/` were run directly against a locally-started process via
   `uvicorn`/pytest instead, and that run is the one covered by
   `docs/TEST_RESULTS.md`.
+- **Postgres is not exercised by the test suite or CI** - every test uses
+  SQLite, which stores enums as VARCHAR and hides enum-label problems.
+  Schema comes from `create_all()`; there is no Alembic/migration tool.
+- **Operator-supplied server paths** (`scores_csv_path`, `cases_csv_path`,
+  `apk_path`) are opened/installed as given; `params` is an untyped dict
+  with no per-module schema or data-directory confinement.
+- **Scope entries are host-only** (any port on an authorized host) and have
+  no expiry; `revoked` is a string flag.
+- **Simulator vulnerable mode is on by default** and `docker-compose.yml`
+  does not set `IDENTITYSHIELD_SIM_VULNERABLE` or `IDENTITYSHIELD_ENV`
+  (which defaults to `local`).
+- **Encryption at rest is documented only** (`EVIDENCE_POLICY.md` section 3);
+  nothing in code or compose enforces it. The `0600` evidence-file writer
+  exists but no module calls it; evidence lives in the database.
+- **No dashboard tests** and no dashboard build job in CI.
+- `datetime.utcnow()` and Pydantic class-based `Config` produce ~4,000
+  deprecation warnings per test run.

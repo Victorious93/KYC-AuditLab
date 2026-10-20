@@ -1,0 +1,21 @@
+title = "KYC-AuditLab gitleaks config"
+
+[extend]
+useDefault = true
+
+# Extends the default `jwt` rule (the action pins gitleaks 8.24.x, where the
+# top-level [[allowlists]] targetRules syntax is not available).
+#
+# False positive: backend/tests/test_evidence_policy.py feeds a made-up JWT-shaped
+# string to the PII redactor to assert it is replaced with [REDACTED:jwt]. It decodes
+# to {"alg":"HS256"}.{"sub":"12345"} with the dummy signature "signature123" and is
+# not a credential for anything. Scoped to this file AND this exact value, so any
+# other JWT in this file, or the same value elsewhere, is still reported.
+[[rules]]
+id = "jwt"
+
+  [[rules.allowlists]]
+  description = "Dummy JWT fixture for the evidence redaction test"
+  condition = "AND"
+  paths = ['''^backend/tests/test_evidence_policy\.py$''']
+  regexes = ['''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NSJ9\.c2lnbmF0dXJlMTIz$''']

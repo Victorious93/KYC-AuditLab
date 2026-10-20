@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..auth import require_operator
 from ..db import get_db
 from ..orchestrator.registry import registry
 from ..orchestrator.runner import execute_module
 
-router = APIRouter(prefix="/tests", tags=["tests"])
+router = APIRouter(prefix="/tests", tags=["tests"], dependencies=[Depends(require_operator)])
 
 
 @router.get("/modules")
