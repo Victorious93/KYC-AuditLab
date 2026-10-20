@@ -1,4 +1,30 @@
-# IdentityShield
+<!-- victorious-fleet-readme-refresh:start -->
+<p align="center">
+  <img src="assets/logo.png" alt="KYC-AuditLab / IdentityShield logo" width="200">
+</p>
+
+# KYC-AuditLab / IdentityShield
+
+Local KYC / identity audit lab companion (policy hold on remote surfaces).
+
+**Package id:** `com.identityshield.companion`
+
+> **Package note:** From `android-companion/app/build.gradle.kts`.
+
+**Status:** blocked (policy hold) *(from [fleet-manifest ROADMAP](https://github.com/Victorious93/fleet-manifest/blob/main/ROADMAP.md))*
+
+## Install / build
+
+Android companion under `android-companion/`. Typical: `cd android-companion && ./gradlew :app:assembleDebug` if wrapper present — verify in-repo.
+
+_Steps above are taken from this repo’s build files / existing docs; anything not exercised in this refresh is unlabeled as verified on a device._
+
+## Victorious fleet
+
+- Monorepo: [https://github.com/Victorious93/victorious-fleet](https://github.com/Victorious93/victorious-fleet)
+- Fleet site: [https://victorious-framework.pages.dev](https://victorious-framework.pages.dev)
+
+<!-- victorious-fleet-readme-refresh:end -->
 
 A **local-first** security research framework for evaluating a KYC / identity-verification system’s resistance across seven layers: document validation, facial biometrics, liveness, Android client security, API/network, verification workflow/session, and fraud monitoring.
 
