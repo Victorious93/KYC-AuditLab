@@ -63,3 +63,12 @@ the device. Never add a key to `BuildConfig`, resources or assets. If a future
 feature needs API access from the device, follow "Future APK clients" in
 `../docs/CONTROLLER_INTEGRATION.md` (host passes a short-lived token at
 runtime; token kept in memory only).
+
+## Debug signing key (public, debug-only)
+
+`app/debug.keystore` is a **public, debug-only** key committed on purpose so every
+builder gets the same debug signing fingerprint (RSA 2048, alias `androiddebugkey`,
+store/key password `android`, `CN=Android Debug,O=Android,C=US`, valid 30 years).
+Its credentials are the standard, publicly known Android debug values, so it
+offers no protection. **Never use it to sign a release build.** No release key is
+configured in this repo; release signing must use a separate, private key.
