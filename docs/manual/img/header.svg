@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" role="img" aria-label="IdentityShield manual header">
+  <defs>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00f0ff"/>
+      <stop offset="1" stop-color="#ff00d4"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="960" height="240" fill="#0b0b1a"/>
+  <circle cx="150" cy="120" r="72" fill="none" stroke="url(#ring)" stroke-width="12" filter="url(#glow)"/>
+  <text x="270" y="115" fill="#e8e8ff" font-family="system-ui, sans-serif" font-size="44" font-weight="700">IdentityShield</text>
+  <text x="272" y="158" fill="#9aa0c8" font-family="system-ui, sans-serif" font-size="22">User manual</text>
+</svg>

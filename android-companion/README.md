@@ -37,7 +37,7 @@ something this general framework ships by default.
 1. Build: `cd android-companion && ANDROID_HOME=/path/to/sdk ./gradlew assembleDebug`
    (JDK 17+, SDK platform 36). Output: `app/build/outputs/apk/debug/app-debug.apk`.
    Install with `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
-   The APK has no launcher activity yet; checks are exposed as a library class
+   The only launcher activity is an offline Help screen (`HelpActivity`); checks are exposed as a library class
    (`IntegrityChecks`) for an instrumentation/UI Automator harness (step 3).
 2. Attach a device or start an emulator; `adb devices` must show it.
 3. Run the Layer 4 modules through the backend (`POST /tests/run` with the
