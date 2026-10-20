@@ -4,7 +4,18 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <application
         android:label="IdentityShield Companion"
-        android:allowBackup="false" />
+        android:allowBackup="false">
+        <!-- Offline Help screen (static text, no permissions, no network). -->
+        <activity
+            android:name=".HelpActivity"
+            android:label="IdentityShield Help"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
     <!-- Entry point for the backend adb harness (am instrument -w). -->
     <instrumentation
         android:name=".IntegrityInstrumentation"

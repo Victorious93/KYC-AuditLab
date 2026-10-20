@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { Help } from "./Help";
 import {
   api,
   getSession,
@@ -31,6 +32,15 @@ export function App() {
       }),
     [],
   );
+
+  // Minimal hash route: #/help shows the Help page (available signed in or not).
+  const [route, setRoute] = useState(window.location.hash);
+  useEffect(() => {
+    const onHash = () => setRoute(window.location.hash);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  if (route === "#/help") return <Help onBack={() => (window.location.hash = "")} />;
 
   if (!session) return <SignIn notice={notice} onSignedIn={() => setNotice(null)} />;
   return (
@@ -88,6 +98,9 @@ function SignIn({ notice, onSignedIn }: { notice: string | null; onSignedIn: () 
           {busy ? "Signing in..." : "Sign in"}
         </button>
       </form>
+      <p style={{ fontSize: 13 }}>
+        <a href="#/help">Help</a>
+      </p>
     </div>
   );
 }
@@ -151,7 +164,7 @@ function Dashboard({ session, onSignOut }: { session: Session; onSignOut: () => 
         <div style={{ fontSize: 13, color: "#555" }}>
           Signed in as <strong>{session.identity}</strong> ({session.roles.join(", ")}), until{" "}
           {new Date(session.expiresAt).toLocaleTimeString()}{" "}
-          <button onClick={onSignOut}>Sign out</button>
+          <a href="#/help">Help</a> <button onClick={onSignOut}>Sign out</button>
         </div>
       </div>
       <p style={{ color: "#555" }}>

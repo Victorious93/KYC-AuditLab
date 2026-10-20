@@ -12,7 +12,7 @@ A **local-first** security research framework for evaluating a KYC / identity-ve
 
 > **Repo slug:** GitHub repository name is `KYC-AuditLab`; the product name in-tree is **IdentityShield**.
 
-**Out of the box, this targets only its own bundled simulator.** No third-party production identity-verification system is in scope by default. Read [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) before trusting any claim about what the framework “found”.
+**Out of the box, this targets only its own bundled simulator.** No third-party production identity-verification system is in scope by default. New here? Start with the user manual, [`docs/MANUAL.md`](docs/MANUAL.md). Read [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) before trusting any claim about what the framework “found”.
 
 ## Quick start (no Docker)
 
