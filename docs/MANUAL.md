@@ -309,17 +309,56 @@ What it deliberately does **not** have:
 
 The Help screen added to the launcher needs no permission.
 
+The fleet theme client (section 5.1) adds **no permission**. It only adds a `<queries>` entry for
+`com.victorious.launch` and the `com.victorious.launch.theme` provider (package visibility, which
+`QUERY_ALL_PACKAGES` already covers; declared explicitly so the dependency is visible), and one
+exported receiver, described below.
+
+**Exported components** (final merged manifest):
+
+| Component | Why exported | Why it is safe |
+|---|---|---|
+| `.HelpActivity` | Launcher entry | Static text, no input handling. |
+| `.fleet.FleetThemeChangedReceiver` (action `com.victorious.launch.action.FLEET_THEME_CHANGED`) | VictorLaunch sends this broadcast explicitly to our package, without a permission, so the receiver must be exported to get it. | It reads **no** extras and trusts nothing in the intent. Its only effect is a debounced, read-only re-query of the theme provider, which is itself checked by package and signing-cert pin. A forged broadcast from any app can at most cause one harmless extra query. |
+
 ---
 
 ## 5. Fleet integration
 
 - **Remote control is not implemented and is off.** Nothing in the companion accepts commands from a
-  network, another app or a controller. The only entry point is the adb instrumentation that the
+  network, another app or a controller. (The fleet theme receiver in 5.1 is a read-only "theme may
+  have changed" wake-up, not a command channel.) The only entry point is the adb instrumentation that the
   backend starts. No Messenger/IPC or remote-command channel exists. Any future change requires an
   explicit decision and its own review.
 - External controllers (for example Droidcommand-AI) integrate through the **HTTP API** with their own
   key and the reference client. They never talk to the APK. Contract:
   [`CONTROLLER_INTEGRATION.md`](CONTROLLER_INTEGRATION.md).
+
+### 5.1 Fleet theme (VictorLaunch)
+
+When VictorLaunch is installed, the companion's screens (Help today, and any future activity that
+extends `ThemedActivity`) follow its fleet theme live, per victorlaunch `docs/specs/FLEET_THEME.md`
+(schema version 1):
+
+- On start the companion reads `content://com.victorious.launch.theme/current`, registers a
+  `ContentObserver` on it, and re-reads on change or on the `FLEET_THEME_CHANGED` broadcast.
+- **Provider authorization:** the provider must belong to `com.victorious.launch`, and every current
+  signing cert of that package must match a pinned SHA-256. The pinned value is VictorLaunch's
+  published debug cert
+  `B9:9A:AF:E2:C1:41:8B:5D:64:AA:0D:4B:AC:61:FC:F7:A7:BA:81:44:35:E0:EF:89:E8:AA:55:BE:56:4E:4A:69`
+  (victorlaunch `keystore/README.md`). The revoked cert `1B:06:…:BA:CA` is explicitly rejected. No
+  release cert is published yet, so release VictorLaunch builds are not trusted until one is pinned.
+  The signature permission `com.victorious.launch.permission.READ_FLEET_THEME` is not used.
+- **Read-only.** The companion never inserts, updates or deletes on the provider.
+- `schemaVersion` other than `1`, a missing row, a pin mismatch, or a `SecurityException` (VictorLaunch
+  has not pinned the companion) → the built-in theme. A single bad colour (not `#RRGGBB` /
+  `#AARRGGBB`) falls back to the built-in value for that slot. Unknown columns are ignored.
+- For VictorLaunch to serve the companion, it must pin the companion's package
+  `com.identityshield.companion` and debug cert
+  `22:4F:C1:64:D6:8A:28:88:B9:FE:8F:10:C7:B6:B5:E5:78:67:2B:D2:F8:97:05:06:68:4B:23:A9:43:FA:44:1D` on its side.
+  Until then you see the built-in theme.
+
+### 5.2 Controller safety gates
 
 **Safety gates that apply to every controller call:**
 
