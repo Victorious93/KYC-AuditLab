@@ -1,30 +1,28 @@
-<!-- victorious-fleet-readme-refresh:start -->
-<p align="center">
-  <img src="assets/logo.png" alt="KYC-AuditLab / IdentityShield logo" width="200">
-</p>
+<div align="center">
+
+<p align="center"><img src="assets/logo.png" width="200" alt="KYC-AuditLab / IdentityShield logo"></p>
 
 # KYC-AuditLab / IdentityShield
 
-Local KYC / identity audit lab companion (policy hold on remote surfaces).
+**A local-first security research lab for evaluating KYC and identity-verification systems.**
 
-**Package id:** `com.identityshield.companion`
+<p>
+  <a href="https://github.com/Victorious93/KYC-AuditLab/actions/workflows/security.yml"><img src="https://img.shields.io/github/actions/workflow/status/Victorious93/KYC-AuditLab/security.yml?branch=main&style=flat-square&labelColor=0B0F1A&logo=githubactions&logoColor=00E5FF&label=CI" alt="CI"/></a>
+  <img src="https://img.shields.io/badge/platform-Python%20%26%20Android-00E5FF?style=flat-square&labelColor=0B0F1A" alt="Platform"/>
+  <a href="https://victorious-framework.pages.dev"><img src="https://img.shields.io/badge/Victorious-Framework-FF2BD6?style=flat-square&labelColor=0B0F1A" alt="Victorious Framework"/></a>
+</p>
 
-> **Package note:** From `android-companion/app/build.gradle.kts`.
+<p><a href="https://victorious-framework.pages.dev">Victorious Framework</a></p>
 
-**Status:** blocked (policy hold) *(from [fleet-manifest ROADMAP](https://github.com/Victorious93/fleet-manifest/blob/main/ROADMAP.md))*
+</div>
 
-## Install / build
+---
 
-Android companion under `android-companion/`. Typical: `cd android-companion && ./gradlew :app:assembleDebug` if wrapper present — verify in-repo.
+> **Status: Phase 1, early.** The backend and simulator are tested locally; the Android companion is Kotlin source that has **not been built or run yet**. Policy hold applies to remote surfaces. Android companion package id: `com.identityshield.companion`.
 
-_Steps above are taken from this repo’s build files / existing docs; anything not exercised in this refresh is unlabeled as verified on a device._
+## Install
 
-## Victorious fleet
-
-- Monorepo: [https://github.com/Victorious93/victorious-fleet](https://github.com/Victorious93/victorious-fleet)
-- Fleet site: [https://victorious-framework.pages.dev](https://victorious-framework.pages.dev)
-
-<!-- victorious-fleet-readme-refresh:end -->
+There is no release or APK. Run the backend and dashboard from source (Quick start below). Docs: [Manual](docs/MANUAL.md) · [Threat model](docs/THREAT_MODEL.md) · [Limitations](docs/LIMITATIONS.md) · [Roadmap](docs/ROADMAP.md).
 
 A **local-first** security research framework for evaluating a KYC / identity-verification system’s resistance across seven layers: document validation, facial biometrics, liveness, Android client security, API/network, verification workflow/session, and fraud monitoring.
 
@@ -117,6 +115,18 @@ docker-compose.yml   Postgres + backend + dashboard
 ## Contributing
 
 Update `docs/LIMITATIONS.md` in the same change as any capability claim. Keep scope/authorization fail-closed. Do not add generators for counterfeit identity documents or biometric attack media.
+
+---
+
+## Victorious fleet
+
+KYC-AuditLab / IdentityShield is part of the [Victorious Framework](https://victorious-framework.pages.dev), a family of Android and PC tools by Don Victor. **Every app works standalone; fleet integrations are optional** and never required.
+
+Related: [droidcommand-AI](https://github.com/Victorious93/droidcommand-AI) (fleet controller), [victorious-fleet](https://github.com/Victorious93/victorious-fleet) (index of all fleet apps), [fleet-manifest](https://github.com/Victorious93/fleet-manifest) (fleet status feed). The full roster lives in [victorious-fleet](https://github.com/Victorious93/victorious-fleet), and live status is in [fleet-manifest](https://github.com/Victorious93/fleet-manifest).
+
+## Contributing
+
+Update `docs/LIMITATIONS.md` in the same change as any capability claim. Keep scope/authorization fail-closed. Do not add generators for counterfeit identity documents or biometric attack media. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
